@@ -8,7 +8,6 @@
     <title>Meal Planner</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-
 </head>
 
 <body class="bg-white-100">
@@ -27,7 +26,7 @@
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex flex-col">
                             <h2 class="text-lg font-semibold">{{ day.date.strftime('%A') }}</h2>
-                            <div class="text-md text-gray-500 -mt-1">{{ day.date.strftime('%b %d') }}</div>
+                            <div class="text-md text-gray-500 -mt-1">{{ day.date.strftime('%b %d').upper() }}</div>
                         </div>
 
                         <!-- Star Toggle -->
@@ -37,18 +36,53 @@
                             <button type="button"
                                 @click="starred = !starred; $refs.star{{ i }}.value = starred ? 'on' : 'off'"
                                 class="focus:outline-none">
+
+                                <!-- Active icon -->
                                 <svg x-show="starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400"
                                     fill="currentColor" viewBox="0 0 20 20">
                                     <path
                                         d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.176c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.785.57-1.84-.197-1.54-1.118l1.286-3.966a1 1 0 00-.364-1.118L2.05 9.393c-.783-.57-.38-1.81.588-1.81h4.176a1 1 0 00.95-.69l1.286-3.966z" />
                                 </svg>
-                                <svg x-show="!starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-300"
+
+                                <!-- Inactive icon -->
+                                <svg x-show="!starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500"
                                     fill="none" viewBox="0 0 20 20" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.176c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.785.57-1.84-.197-1.54-1.118l1.286-3.966a1 1 0 00-.364-1.118L2.05 9.393c-.783-.57-.38-1.81.588-1.81h4.176a1 1 0 00.95-.69l1.286-3.966z" />
                                 </svg>
                             </button>
                         </div>
+                        <div x-data="{ active: {{ 'true' if day.is_work_day else 'false' }} }">
+                            <!-- Hidden input -->
+                            <input type="hidden" name="days[{{ i }}][is_work_day]" x-ref="work{{ i }}"
+                                value="{{ 'on' if day.is_work_day else 'off' }}">
+
+                            <!-- Work toggle button -->
+                            <button type="button" x-data="{ active: {{ 'true' if day.is_work_day else 'false' }} }"
+                                @click="active = !active; $refs.work{{ i }}.value = active ? 'on' : 'off'"
+                                class="focus:outline-none">
+
+                                <!-- Active icon -->
+                                <svg x-show="active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                    viewBox="0 0 24 24" fill="currentColor" class="size-6 text-purple-400">
+                                    <path
+                                        d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
+                                    <path d="M4.867 19.125h.008v.008h-.008v-.008Z" />
+                                </svg>
+
+                                <!-- Inactive icon -->
+                                <svg x-show="!active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+                                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                                    class="size-6 text-gray-500">
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
+                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                        d="M4.867 19.125h.008v.008h-.008v-.008Z" />
+                                </svg>
+                            </button>
+                        </div>
+
+
                     </div>
 
                     <!-- Meals -->

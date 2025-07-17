@@ -34,6 +34,7 @@ class MealDay(Base):
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, unique=True)
     is_sammy_home = Column(Boolean, default=False)
+    is_work_day = Column(Boolean, default=False)
     meals = relationship("Meal", back_populates="day", cascade="all, delete-orphan")
 
 

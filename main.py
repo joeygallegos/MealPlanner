@@ -1,4 +1,5 @@
 # main.py
+import os
 from fastapi import FastAPI, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,7 +23,6 @@ init_db()
 # Mount static files (for Tailwind CSS, Alpine.js, etc.)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
-
 
 # Dependency to create a new DB session per request
 def get_db():
@@ -82,10 +82,13 @@ async def save_day(request: Request):
     for day_info in days_data.values():
         day_id = int(day_info["id"])
         is_sammy_home = day_info.get("is_sammy_home", "off").lower() == "on"
-
+        is_work_day = day_info.get("is_work_day", "off").lower() == "on"
+        
+        # Update or create MealDay
         meal_day = db.query(MealDay).filter(MealDay.id == day_id).first()
         if meal_day:
             meal_day.is_sammy_home = is_sammy_home
+            meal_day.is_work_day = is_work_day
             for meal in meal_day.meals:
                 if meal.type == MealType.breakfast:
                     meal.description = day_info.get("breakfast", "")
@@ -150,4 +153,4 @@ def copy_meal_week(
     return {"status": "success", "message": "Meal week copied successfully."}
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=9000)
+    uvicorn.run(app, host=str(os.getenv("SERVICE_HOST", "80")), port=int(os.getenv("SERVICE_PORT", "80")))
