@@ -1,25 +1,25 @@
 <!-- templates/index.html -->
 <!DOCTYPE html>
-<html lang="en" x-data>
+<html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Meal Planner</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 </head>
 
 <body class="bg-white-100">
-    <div class="w-full px-8 py-12">
-
+    <div class="w-full px-8 py-12" x-data>
         <h1 class="text-3xl font-bold mb-6">Meal Planner</h1>
 
-        <form method="post" action="/save">
+        <form id="saveForm" method="post" action="/save">
             <div class="flex space-x-4 overflow-x-auto pb-4">
                 {% for day in days %}
                 {% set i = loop.index0 %}
-                <div class="min-w-[320px] bg-white p-4 rounded-lg shadow border flex-shrink-0">
+                <div class="meal-day-card min-w-[320px] bg-white p-4 rounded-lg shadow border flex-shrink-0"
+                    data-day-id="{{ day.id }}">
                     <!-- Hidden day ID -->
                     <input type="hidden" name="days[{{ i }}][id]" value="{{ day.id }}">
 
@@ -34,17 +34,13 @@
                             <input type="hidden" name="days[{{ i }}][is_sammy_home]"
                                 value="{{ 'on' if day.is_sammy_home else 'off' }}" x-ref="star{{ i }}">
                             <button type="button"
-                                @click="starred = !starred; $refs.star{{ i }}.value = starred ? 'on' : 'off'"
-                                class="focus:outline-none">
-
-                                <!-- Active icon -->
+                                @click="starred = !starred; $refs.star{{ i }}.value = starred ? 'on' : 'off'; $nextTick(() => window.autoSaveCard($el.closest('.meal-day-card')))"
+                                class="focus:outline-none" title="Sammy home">
                                 <svg x-show="starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400"
                                     fill="currentColor" viewBox="0 0 20 20">
                                     <path
                                         d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.176c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.785.57-1.84-.197-1.54-1.118l1.286-3.966a1 1 0 00-.364-1.118L2.05 9.393c-.783-.57-.38-1.81.588-1.81h4.176a1 1 0 00.95-.69l1.286-3.966z" />
                                 </svg>
-
-                                <!-- Inactive icon -->
                                 <svg x-show="!starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500"
                                     fill="none" viewBox="0 0 20 20" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -52,25 +48,20 @@
                                 </svg>
                             </button>
                         </div>
-                        <div x-data="{ active: {{ 'true' if day.is_work_day else 'false' }} }">
-                            <!-- Hidden input -->
-                            <input type="hidden" name="days[{{ i }}][is_work_day]" x-ref="work{{ i }}"
-                                value="{{ 'on' if day.is_work_day else 'off' }}">
 
-                            <!-- Work toggle button -->
+                        <!-- Work Day Toggle -->
+                        <div>
+                            <input type="hidden" name="days[{{ i }}][is_work_day]"
+                                value="{{ 'on' if day.is_work_day else 'off' }}" x-ref="work{{ i }}">
                             <button type="button" x-data="{ active: {{ 'true' if day.is_work_day else 'false' }} }"
-                                @click="active = !active; $refs.work{{ i }}.value = active ? 'on' : 'off'"
-                                class="focus:outline-none">
-
-                                <!-- Active icon -->
+                                @click="active = !active; $refs.work{{ i }}.value = active ? 'on' : 'off'; $nextTick(() => window.autoSaveCard($el.closest('.meal-day-card')))"
+                                class="focus:outline-none" title="Work day">
                                 <svg x-show="active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                     viewBox="0 0 24 24" fill="currentColor" class="size-6 text-purple-400">
                                     <path
                                         d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
                                     <path d="M4.867 19.125h.008v.008h-.008v-.008Z" />
                                 </svg>
-
-                                <!-- Inactive icon -->
                                 <svg x-show="!active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
                                     class="size-6 text-gray-500">
@@ -81,8 +72,6 @@
                                 </svg>
                             </button>
                         </div>
-
-
                     </div>
 
                     <!-- Meals -->
@@ -91,36 +80,169 @@
                             <label class="block text-sm font-medium text-gray-700">Breakfast</label>
                             {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") | first %}
                             <textarea name="days[{{ i }}][breakfast]" rows="5"
-                                class="mt-1 block w-full border rounded-md p-2">{{ breakfast.description if breakfast else '' }}</textarea>
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ breakfast.description if breakfast else '' }}</textarea>
+                            <div class="save-status text-xs mt-1 text-gray-400" data-field="breakfast"></div>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Lunch</label>
                             {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") | first %}
                             <textarea name="days[{{ i }}][lunch]" rows="5"
-                                class="mt-1 block w-full border rounded-md p-2">{{ lunch.description if lunch else '' }}</textarea>
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ lunch.description if lunch else '' }}</textarea>
+                            <div class="save-status text-xs mt-1 text-gray-400" data-field="lunch"></div>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Dinner</label>
                             {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") | first %}
                             <textarea name="days[{{ i }}][dinner]" rows="5"
-                                class="mt-1 block w-full border rounded-md p-2">{{ dinner.description if dinner else '' }}</textarea>
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ dinner.description if dinner else '' }}</textarea>
+                            <div class="save-status text-xs mt-1 text-gray-400" data-field="dinner"></div>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
             </div>
 
-            <div class="mt-6">
-                <button type="submit" class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded shadow">
-                    Save All
-                </button>
+            <div class="mt-6 flex items-center gap-3">
+                <span class="text-gray-500 text-sm">Autosaving as you type.</span>
             </div>
         </form>
     </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 z-50 px-4 py-3 rounded shadow-lg text-white" role="status"
+        aria-live="polite"></div>
+
+    <script>
+        function showToast(message, { type = 'error', timeout = 3000 } = {})
+        {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.className = "fixed bottom-4 right-4 z-50 px-4 py-3 rounded shadow-lg text-white";
+            if (type === 'error') el.classList.add('bg-red-600');
+            if (type === 'ok') el.classList.add('bg-green-600');
+            el.classList.remove('hidden');
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.add('hidden'), timeout);
+        }
+
+        function nowHHMMSS()
+        {
+            const d = new Date();
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+
+        function collectDayPayload(card)
+        {
+            const id = Number(card.dataset.dayId);
+            const isSammyInp = card.querySelector('input[name$="[is_sammy_home]"]');
+            const isWorkInp = card.querySelector('input[name$="[is_work_day]"]');
+            const getBool = (el) => el ? (String(el.value).toLowerCase() === 'on') : false;
+            const breakfastEl = card.querySelector('textarea[name$="[breakfast]"]');
+            const lunchEl = card.querySelector('textarea[name$="[lunch]"]');
+            const dinnerEl = card.querySelector('textarea[name$="[dinner]"]');
+            return {
+                id,
+                is_sammy_home: getBool(isSammyInp),
+                is_work_day: getBool(isWorkInp),
+                breakfast: breakfastEl ? breakfastEl.value : "",
+                lunch: lunchEl ? lunchEl.value : "",
+                dinner: dinnerEl ? dinnerEl.value : ""
+            };
+        }
+
+        function debounce(fn, wait = 600)
+        {
+            let t;
+            return (...args) =>
+            {
+                clearTimeout(t);
+                t = setTimeout(() => fn(...args), wait);
+            };
+        }
+
+        async function saveCard(card)
+        {
+            const day = collectDayPayload(card);
+            const res = await fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day })
+            });
+            if (!res.ok)
+            {
+                let msg = 'Save failed';
+                try { const data = await res.json(); msg = data.message || msg; } catch { }
+                throw new Error(msg);
+            }
+            return true;
+        }
+
+        window.autoSaveCard = debounce(async (card, fieldEl) =>
+        {
+            try
+            {
+                await saveCard(card);
+                if (fieldEl)
+                {
+                    const wrapper = fieldEl.closest('div');
+                    const statusDiv = wrapper.querySelector('.save-status');
+                    if (statusDiv)
+                    {
+                        statusDiv.textContent = `Saved ✓ at ${nowHHMMSS()}`;
+                        statusDiv.className = "save-status text-xs mt-1 text-emerald-600";
+                    }
+                }
+            } catch (e)
+            {
+                if (fieldEl)
+                {
+                    const wrapper = fieldEl.closest('div');
+                    const statusDiv = wrapper.querySelector('.save-status');
+                    if (statusDiv)
+                    {
+                        statusDiv.textContent = "Save failed ✗";
+                        statusDiv.className = "save-status text-xs mt-1 text-red-600";
+                    }
+                }
+                showToast(e.message || 'Save error', { type: 'error' });
+            }
+        }, 600);
+
+        (function wireFormAjax()
+        {
+            const form = document.getElementById('saveForm');
+            if (!form) return;
+            form.addEventListener('submit', async (e) =>
+            {
+                e.preventDefault();
+                const cards = Array.from(document.querySelectorAll('.meal-day-card'));
+                const days = cards.map(collectDayPayload);
+                try
+                {
+                    const res = await fetch('/api/save', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ days })
+                    });
+                    if (!res.ok)
+                    {
+                        let msg = 'Save failed';
+                        try { const data = await res.json(); msg = data.message || msg; } catch { }
+                        throw new Error(msg);
+                    }
+                    showToast('All changes saved', { type: 'ok', timeout: 1500 });
+                } catch (err)
+                {
+                    showToast(err.message || 'Save error', { type: 'error' });
+                }
+            });
+        })();
+    </script>
 </body>
-
-
 
 </html>
