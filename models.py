@@ -23,6 +23,7 @@ load_dotenv()
 
 Base = declarative_base()
 
+
 class MealType(enum.Enum):
     breakfast = "breakfast"
     lunch = "lunch"
@@ -33,8 +34,8 @@ class MealDay(Base):
     __tablename__ = "meal_days"
     id = Column(Integer, primary_key=True, index=True)
     date = Column(Date, nullable=False, unique=True)
-    is_sammy_home = Column(Boolean, default=False)
-    is_work_day = Column(Boolean, default=False)
+    is_starred = Column(Boolean, default=False)
+    is_sammy_working = Column(Boolean, default=False)
     meals = relationship("Meal", back_populates="day", cascade="all, delete-orphan")
 
 
@@ -54,9 +55,11 @@ host = os.getenv("DB_HOST", "")
 port = os.getenv("DB_PORT", "")
 database = os.getenv("DB_NAME", "")
 DATABASE_URL = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
+print("DATABASE_URL:", DATABASE_URL)
 
 engine = create_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 
 def init_db():
     Base.metadata.create_all(bind=engine)
