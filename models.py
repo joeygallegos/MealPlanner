@@ -5,6 +5,7 @@ from sqlalchemy import (
     Integer,
     Date,
     Boolean,
+    String,
     Enum,
     Text,
     ForeignKey,
@@ -45,6 +46,9 @@ class Meal(Base):
     meal_day_id = Column(Integer, ForeignKey("meal_days.id"), nullable=False)
     type = Column(Enum(MealType), nullable=False)
     description = Column(Text)
+    cooking_user = Column(String(10), nullable=True)  # NEW: 'Joey' or 'Sam'
+    is_favorite = Column(Boolean, default=False, nullable=False)
+    is_takeout = Column(Boolean, default=False, nullable=False)
     day = relationship("MealDay", back_populates="meals")
 
 
@@ -57,7 +61,7 @@ database = os.getenv("DB_NAME", "")
 DATABASE_URL = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 print("DATABASE_URL:", DATABASE_URL)
 
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=True, pool_size=20, max_overflow=0)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

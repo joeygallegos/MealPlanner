@@ -82,54 +82,151 @@
                     <div class="space-y-3">
                         <!-- Breakfast -->
                         <div data-meal-block data-field="breakfast">
+                            {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") |
+                            first %}
                             <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">Breakfast</label>
-                                <button type="button"
-                                    class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                    @click="window.armSwap($el.closest('.meal-day-card'), 'breakfast', $el.closest('[data-meal-block]'))"
-                                    title="Swap Breakfast with another day">
-                                    ⇄ Swap
-                                </button>
+                                <label class="block text-sm font-medium text-gray-700">
+                                    Breakfast
+                                    {% if breakfast.is_takeout %}
+                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
+                                    {% endif %}
+                                </label>
+                                <div class="flex items-center gap-2">
+
+                                    <!-- Favorite toggle pill -->
+                                    <div x-data="{
+                                        fav: {{ 'true' if breakfast.is_favorite else 'false' }},
+                                        toggleFav() {
+                                        this.fav = !this.fav;
+                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
+                                            meals: {
+                                            breakfast: {
+                                                is_favorite: this.fav
+                                            }
+                                            }
+                                        });
+                                        }
+                                    }">
+                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                            @click="toggleFav()">
+                                            Favorite
+                                        </button>
+                                    </div>
+
+                                    <!-- Swap toggle -->
+                                    <button type="button"
+                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                                        @click="window.armSwap($el.closest('.meal-day-card'), 'breakfast', $el.closest('[data-meal-block]'))"
+                                        title="Swap Breakfast with another day">
+                                        ⇄ Swap
+                                    </button>
+                                </div>
                             </div>
-                            {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") | first %}
+
                             <textarea name="days[{{ i }}][breakfast]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if breakfast.is_takeout else '' }}"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ breakfast.description if breakfast else '' }}</textarea>
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="breakfast"></div>
                         </div>
 
                         <!-- Lunch -->
                         <div data-meal-block data-field="lunch">
+                            {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") |
+                            first %}
                             <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">Lunch</label>
-                                <button type="button"
-                                    class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                    @click="window.armSwap($el.closest('.meal-day-card'), 'lunch', $el.closest('[data-meal-block]'))"
-                                    title="Swap Lunch with another day">
-                                    ⇄ Swap
-                                </button>
+                                <label class="block text-sm font-medium text-gray-700">
+                                    Lunch
+                                    {% if lunch.is_takeout %}
+                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
+                                    {% endif %}
+                                </label>
+                                <div class="flex items-center gap-2">
+
+                                    <!-- Favorite toggle pill -->
+                                    <div x-data="{
+                                        fav: {{ 'true' if lunch.is_favorite else 'false' }},
+                                        toggleFav() {
+                                        this.fav = !this.fav;
+                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
+                                            meals: {
+                                            lunch: {
+                                                is_favorite: this.fav
+                                            }
+                                            }
+                                        });
+                                        }
+                                    }">
+                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                            @click="toggleFav()">
+                                            Favorite
+                                        </button>
+                                    </div>
+
+                                    <!-- Swap toggle -->
+                                    <button type="button"
+                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                                        @click="window.armSwap($el.closest('.meal-day-card'), 'lunch', $el.closest('[data-meal-block]'))"
+                                        title="Swap lunch with another day">
+                                        ⇄ Swap
+                                    </button>
+                                </div>
                             </div>
-                            {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") | first %}
+
                             <textarea name="days[{{ i }}][lunch]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if lunch.is_takeout else '' }}"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ lunch.description if lunch else '' }}</textarea>
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="lunch"></div>
                         </div>
 
                         <!-- Dinner -->
                         <div data-meal-block data-field="dinner">
+                            {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") |
+                            first %}
                             <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">Dinner</label>
-                                <button type="button"
-                                    class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                    @click="window.armSwap($el.closest('.meal-day-card'), 'dinner', $el.closest('[data-meal-block]'))"
-                                    title="Swap Dinner with another day">
-                                    ⇄ Swap
-                                </button>
+                                <label class="block text-sm font-medium text-gray-700">
+                                    Dinner
+                                    {% if dinner.is_takeout %}
+                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
+                                    {% endif %}
+                                </label>
+                                <div class="flex items-center gap-2">
+
+
+                                    <!-- Favorite toggle pill -->
+                                    <div x-data="{
+                                        fav: {{ 'true' if dinner.is_favorite else 'false' }},
+                                        toggleFav() {
+                                        this.fav = !this.fav;
+                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
+                                            meals: {
+                                            dinner: {
+                                                is_favorite: this.fav
+                                            }
+                                            }
+                                        });
+                                        }
+                                    }">
+                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                            @click="toggleFav()">
+                                            Favorite
+                                        </button>
+                                    </div>
+
+                                    <!-- Swap toggle -->
+                                    <button type="button"
+                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                                        @click="window.armSwap($el.closest('.meal-day-card'), 'dinner', $el.closest('[data-meal-block]'))"
+                                        title="Swap dinner with another day">
+                                        ⇄ Swap
+                                    </button>
+                                </div>
                             </div>
-                            {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") | first %}
+
                             <textarea name="days[{{ i }}][dinner]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if dinner.is_takeout else '' }}"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ dinner.description if dinner else '' }}</textarea>
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="dinner"></div>
                         </div>
@@ -139,10 +236,6 @@
             </div>
 
             <div class="mt-6 flex items-center gap-3">
-                <button id="saveAllBtn" type="submit"
-                    class="px-6 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded shadow">
-                    Save All
-                </button>
                 <span class="text-gray-500 text-sm">Autosaving as you type. Use ⇄ Swap to exchange meals across
                     days.</span>
             </div>
@@ -221,36 +314,55 @@
             return true;
         }
 
-        window.autoSaveCard = debounce(async (card, fieldEl) =>
+        // Utility function to merge deeply
+        window.deepMerge = function (target, source)
         {
-            try
+            for (const key in source)
             {
-                await saveCard(card);
-                if (fieldEl)
+                if (source[key] instanceof Object && key in target)
                 {
-                    const wrapper = fieldEl.closest('[data-meal-block]') || fieldEl.closest('div');
-                    const statusDiv = wrapper?.querySelector('.save-status');
-                    if (statusDiv)
-                    {
-                        statusDiv.textContent = `Saved ✓ at ${nowHHMMSS()}`;
-                        statusDiv.className = "save-status text-xs mt-1 text-emerald-600";
-                    }
+                    Object.assign(source[key], window.deepMerge(target[key], source[key]))
                 }
-            } catch (e)
-            {
-                if (fieldEl)
-                {
-                    const wrapper = fieldEl.closest('[data-meal-block]') || fieldEl.closest('div');
-                    const statusDiv = wrapper?.querySelector('.save-status');
-                    if (statusDiv)
-                    {
-                        statusDiv.textContent = "Save failed ✗";
-                        statusDiv.className = "save-status text-xs mt-1 text-red-600";
-                    }
-                }
-                showToast(e.message || 'Save error', { type: 'error' });
             }
-        }, 600);
+            return Object.assign(target || {}, source);
+        }
+
+        window.autoSaveCard = function (card, sourceEl = null, overrides = {})
+        {
+            const dayId = card.dataset.dayId;
+            const payload = {
+                id: parseInt(dayId),
+                breakfast: card.querySelector('[name*="[breakfast]"]')?.value || '',
+                lunch: card.querySelector('[name*="[lunch]"]')?.value || '',
+                dinner: card.querySelector('[name*="[dinner]"]')?.value || '',
+                is_starred: card.querySelector('[name*="[is_starred]"]')?.value === 'on',
+                is_sammy_working: card.querySelector('[name*="[is_sammy_working]"]')?.value === 'on',
+                meals: {}
+            };
+
+            // Merge any overrides (like meals.breakfast.is_favorite)
+            window.deepMerge(payload, overrides);
+
+            fetch('/api/save', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ day: payload })
+            }).then(r =>
+            {
+                if (r.ok && sourceEl)
+                {
+                    const field = sourceEl.closest('[data-meal-block]')?.dataset.field;
+                    const statusEl = card.querySelector(`.save-status[data-field="${field}"]`);
+                    if (statusEl)
+                    {
+                        statusEl.textContent = `Saved ✓ at ${nowHHMMSS()}`;
+                        statusEl.className = "save-status text-xs mt-1 text-emerald-600";
+                        setTimeout(() => statusEl.textContent = "", 1200);
+                    }
+                }
+            });
+        };
+
 
         // Intercept "Save All" to use AJAX /api/save
         (function wireFormAjax()
@@ -384,6 +496,7 @@
             {
                 statusDiv.textContent = `Saved ✓ at ${nowHHMMSS()}`;
                 statusDiv.className = "save-status text-xs mt-1 text-emerald-600";
+                setTimeout(() => statusDiv.textContent = "", 1200);
             }
         }
         function markInlineFailed(wrapper)

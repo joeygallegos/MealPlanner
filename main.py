@@ -1,6 +1,7 @@
 # main.py
 
 import os
+import random
 import re
 from datetime import date, timedelta
 from typing import Annotated, Dict, Any, List, Optional
@@ -38,40 +39,6 @@ def get_db():
         db.close()
 
 
-# --------- Shared DB Update Logic for HTML/JSON Inputs --------------------------
-def _update_days_from_payload(days_payload: List[Dict[str, Any]], db: Session) -> None:
-    """Update MealDay entries with new field names (no legacy fallback)."""
-    for day_info in days_payload:
-        day_id = int(day_info["id"])
-
-        is_starred = bool(day_info.get("is_starred"))
-        is_sammy_working = bool(day_info.get("is_sammy_working"))
-
-        meal_day = db.query(MealDay).filter(MealDay.id == day_id).first()
-
-        if not meal_day:
-            meal_day = MealDay(date=day_info.get("date"))
-            meal_day.meals = [
-                Meal(type=MealType.breakfast, description=""),
-                Meal(type=MealType.lunch, description=""),
-                Meal(type=MealType.dinner, description=""),
-            ]
-            db.add(meal_day)
-            db.flush()
-
-        # Rename-safe assignment
-        setattr(meal_day, "is_starred", is_starred)
-        setattr(meal_day, "is_sammy_working", is_sammy_working)
-
-        for meal in meal_day.meals:
-            if meal.type == MealType.breakfast:
-                meal.description = day_info.get("breakfast", "")
-            elif meal.type == MealType.lunch:
-                meal.description = day_info.get("lunch", "")
-            elif meal.type == MealType.dinner:
-                meal.description = day_info.get("dinner", "")
-
-
 # --------- HTML VIEWS --------------------------
 @app.get("/", response_class=HTMLResponse)
 def read_index(request: Request):
@@ -107,43 +74,120 @@ def read_index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request, "days": days})
 
 
+def _assign_nested_key(d, keys, value):
+    """Assign value into a nested dictionary given a list of keys."""
+    for key in keys[:-1]:
+        d = d.setdefault(key, {})
+    d[keys[-1]] = value
+
+
+def _update_days_from_payload(days: list[dict], db):
+    # Print payload
+    print("Payload days:", days)
+    for day in days:
+        meal_day = db.query(MealDay).filter(MealDay.id == day["id"]).first()
+        if not meal_day:
+            continue
+
+        meal_day.is_starred = day.get("is_starred", False)
+        meal_day.is_sammy_working = day.get("is_sammy_working", False)
+
+        meals_by_type = {meal.type.value: meal for meal in meal_day.meals}
+
+        for meal_type in ["breakfast", "lunch", "dinner"]:
+            meal = meals_by_type.get(meal_type)
+            if not meal:
+                continue
+
+            # Update description
+            meal.description = day.get(meal_type, "")
+
+            # Get nested fields from "meals" block in payload
+            meal_fields = day.get("meals", {}).get(meal_type, {})
+
+            # Update is_takeout if present
+            if meal.is_takeout is not None or "is_takeout" in meal_fields:
+                # Print the current value and new updated value
+                print(
+                    f"Current {meal_type} for day {meal_day.date}: is_takeout={meal.is_takeout} -> New: {meal_fields.get('is_takeout', 'off')}"
+                )
+                # Make change
+                meal.is_takeout = str(meal_fields.get("is_takeout", "off")).lower() in (
+                    "on",
+                    "true",
+                    "1",
+                )
+
+            # Update cooking_user and is_favorite correctly if present
+            if meal.cooking_user is not None or "cooking_user" in meal_fields:
+                # Print the current value and new updated value
+                print(
+                    f"Current {meal_type} for day {meal_day.date}: cooking_user={meal.cooking_user} -> New: {meal_fields.get('cooking_user', 'None')}"
+                )
+                # Make change
+                meal.cooking_user = meal_fields.get("cooking_user", None)
+            else:
+                print(
+                    f"SKIPPING cooking_user update for {meal_type} on day {meal_day.date} as it's not in payload"
+                )
+
+            if meal.is_favorite is not None or "is_favorite" in meal_fields:
+                # Print the current value and new updated value
+                print(
+                    f"Current {meal_type} for day {meal_day.date}: is_favorite={meal.is_favorite} -> New: {meal_fields.get('is_favorite', 'off')}"
+                )
+                # Make change
+                meal.is_favorite = str(
+                    meal_fields.get("is_favorite", "off")
+                ).lower() in (
+                    "on",
+                    "true",
+                    "1",
+                )
+            else:
+                print(
+                    f"SKIPPING is_favorite update for {meal_type} on day {meal_day.date} as it's not in payload"
+                )
+
+
 @app.post("/save")
 async def save_day(request: Request):
-    """
-    Classic HTML form POST fallback — parses raw field names like days[1][breakfast].
-    """
     form: FormData = await request.form()
     db = next(get_db())
 
     days_data = {}
-    pattern = re.compile(r"days\[(\d+)]\[(\w+)]")
+    pattern = re.compile(r"days\[(\d+)]((?:\[[\w]+\])*)")
 
     for key, value in form.items():
         match = pattern.match(key)
-        if match:
-            idx, field = match.groups()
-            days_data.setdefault(idx, {})[field] = value
+        if not match:
+            continue
 
+        idx, rest = match.groups()
+        keys = [idx] + [k.strip("[]") for k in rest.split("][") if k]
+
+        _assign_nested_key(days_data, keys, value)
+
+    # DEBUG:
+    print("Parsed days_data:", days_data)
+
+    # Build payload
     json_days = []
     for day_info in days_data.values():
-        json_days.append(
-            {
-                "id": int(day_info["id"]),
-                "is_starred": day_info.get("is_starred", "off").lower() == "on",
-                "is_sammy_working": day_info.get("is_sammy_working", "off").lower()
-                == "on",
-                "breakfast": day_info.get("breakfast", ""),
-                "lunch": day_info.get("lunch", ""),
-                "dinner": day_info.get("dinner", ""),
-            }
-        )
+        payload = {
+            "id": int(day_info["id"]),
+            "is_starred": day_info.get("is_starred", "off").lower() == "on",
+            "is_sammy_working": day_info.get("is_sammy_working", "off").lower() == "on",
+            "breakfast": day_info.get("breakfast", ""),
+            "lunch": day_info.get("lunch", ""),
+            "dinner": day_info.get("dinner", ""),
+            "meals": day_info.get("meals", {}),  # Full nested dict
+        }
+        json_days.append(payload)
 
     _update_days_from_payload(json_days, db)
     db.commit()
     return RedirectResponse(url="/", status_code=303)
-
-
-# --------- JSON API VIEWS --------------------------
 
 
 @app.post("/api/save", response_class=JSONResponse)
@@ -171,71 +215,52 @@ def api_save(payload: Dict[str, Any] = Body(...)):
     return {"status": "ok"}
 
 
-@app.post("/api/copy-week", response_class=JSONResponse)
-def api_copy_week(payload: Dict[str, Any] = Body(...)):
-    """
-    Copy meals from one week to another. JSON input only.
-    """
-    db = next(get_db())
+@app.get("/api/favorites")
+def get_favorites():
+    db = SessionLocal()
+    favorites = (
+        db.query(Meal.meal_text)
+        .join(MealDay)
+        .filter(MealDay.is_favorite == True)
+        .distinct()
+        .order_by(Meal.meal_text)
+        .all()
+    )
+    db.close()
+    return [{"meal_text": m[0]} for m in favorites if m[0]]
 
-    try:
-        from_date = date.fromisoformat(payload["from_date"])
-        to_date = date.fromisoformat(payload["to_date"])
-        overwrite = bool(payload.get("overwrite", False))
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid or missing date fields.")
 
-    conflicting_days = []
+@app.get("/api/rotation-suggestions")
+def rotation_suggestions(meal_type: Optional[str] = None):
+    db = SessionLocal()
 
-    for i in range(DAYS):
-        tgt_day = (
-            db.query(MealDay)
-            .filter(MealDay.date == to_date + timedelta(days=i))
-            .first()
-        )
-        if not tgt_day:
-            continue
-        if not overwrite and any(m.description.strip() for m in tgt_day.meals):
-            conflicting_days.append(str(tgt_day.date))
+    # Get recent meals from the last 3 days
+    recent_cutoff = date.today() - timedelta(days=3)
+    recent_query = (
+        db.query(Meal.description).join(MealDay).filter(MealDay.date >= recent_cutoff)
+    )
+    if meal_type:
+        recent_query = recent_query.filter(Meal.type == meal_type)
+    recent_meals = recent_query.distinct().all()
+    recent_set = {r[0].strip().lower() for r in recent_meals if r[0]}
 
-    if conflicting_days:
-        return JSONResponse(
-            status_code=409,
-            content={
-                "message": "Target week has existing meals.",
-                "conflicting_days": conflicting_days,
-            },
-        )
+    # Get favorite meals
+    favorite_query = db.query(Meal.description).filter(Meal.is_favorite == True)
+    if meal_type:
+        favorite_query = favorite_query.filter(Meal.type == meal_type)
+    favorite_meals = favorite_query.distinct().all()
+    favorite_set = {
+        f[0].strip()
+        for f in favorite_meals
+        if f[0] and f[0].strip().lower() not in recent_set
+    }
 
-    for i in range(DAYS):
-        src_day = (
-            db.query(MealDay)
-            .filter(MealDay.date == from_date + timedelta(days=i))
-            .first()
-        )
-        tgt_day = (
-            db.query(MealDay)
-            .filter(MealDay.date == to_date + timedelta(days=i))
-            .first()
-        )
+    db.close()
 
-        if not src_day or not tgt_day:
-            continue
+    if not favorite_set:
+        return {"suggestion": None}
 
-        for meal_type in MealType:
-            src_meal = next((m for m in src_day.meals if m.type == meal_type), None)
-            if not src_meal:
-                continue
-
-            tgt_meal = next((m for m in tgt_day.meals if m.type == meal_type), None)
-            if not tgt_meal:
-                tgt_meal = Meal(type=meal_type, day_id=tgt_day.id)
-                db.add(tgt_meal)
-
-            tgt_meal.description = src_meal.description
-
-    db.commit()
-    return {"status": "success", "message": "Meal week copied successfully."}
+    return {"suggestion": random.choice(list(favorite_set))}
 
 
 @app.exception_handler(HTTPException)
