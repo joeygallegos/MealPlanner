@@ -3,7 +3,7 @@
 import os
 import random
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Dict, Any, List, Optional
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Body
@@ -228,6 +228,34 @@ def get_favorites():
     )
     db.close()
     return [{"meal_text": m[0]} for m in favorites if m[0]]
+
+
+@app.get("/api/next-payday", response_class=JSONResponse)
+def get_next_payday():
+    today = datetime.today().date()
+
+    # Anchor payday: Thursday, Sep 18, 2025
+    anchor = datetime(2025, 9, 18).date()
+    delta = (today - anchor).days
+
+    # Figure out how many pay periods have passed
+    if delta >= 0:
+        # Paydays after anchor
+        periods_passed = delta // 14
+        next_payday = anchor + timedelta(days=(periods_passed + 1) * 14)
+    else:
+        # Paydays before anchor
+        weeks_behind = abs(delta) // 14
+        next_payday = anchor - timedelta(days=weeks_behind * 14)
+        while next_payday <= today:
+            next_payday += timedelta(days=14)
+
+    days_until = (next_payday - today).days
+
+    return {
+        "days_until_next_payday": days_until,
+        "next_payday_date": next_payday.strftime("%Y-%m-%d"),
+    }
 
 
 @app.get("/api/rotation-suggestions")
