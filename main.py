@@ -258,6 +258,22 @@ def get_next_payday():
     }
 
 
+@app.get("/api/how-many-times", response_class=JSONResponse)
+def get_how_many_times_eat_out():
+    db = SessionLocal()
+    # Get count of meals where is_takeout is True in the last 7 days
+    seven_days_ago = date.today() - timedelta(days=7)
+    count = (
+        db.query(Meal)
+        .join(MealDay, Meal.meal_day_id == MealDay.id)
+        .filter(Meal.is_takeout == True)
+        .filter(MealDay.date >= seven_days_ago)
+        .count()
+    )
+    db.close()
+    return {"count": count}
+
+
 @app.get("/api/rotation-suggestions")
 def rotation_suggestions(meal_type: Optional[str] = None):
     db = SessionLocal()
