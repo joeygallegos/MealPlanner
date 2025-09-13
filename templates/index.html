@@ -12,7 +12,10 @@
 
 <body class="bg-white-100">
     <div class="w-full px-8 py-12" x-data>
-        <h1 class="text-3xl font-bold mb-6">Meal Planner</h1>
+        <h1 class="text-3xl font-bold">Meal Planner - 🤑 <span id="payday-counter">...</span> days until payday!
+        </h1>
+        <h3 class="text-1xl font-bold mb-4"><span id="eat-out-counter">...</span> days eating out last week!
+        </h3>
 
         <form id="saveForm" method="post" action="/save">
             <div class="flex space-x-4 overflow-x-auto pb-4">
@@ -81,88 +84,105 @@
                     <!-- Meals -->
                     <div class="space-y-3">
                         <!-- Breakfast -->
-                        <div data-meal-block data-field="breakfast">
-                            {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") |
-                            first %}
+                        {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") | first %}
+                        <div data-meal-block data-field="breakfast" x-data="{
+    takeout: {{ 'true' if breakfast and breakfast.is_takeout else 'false' }},
+    fav: {{ 'true' if breakfast and breakfast.is_favorite else 'false' }},
+    index: {{ i }},
+    toggleTakeout(el) {
+      this.takeout = !this.takeout;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { breakfast: { is_takeout: this.takeout } }
+      });
+    },
+    toggleFav(el) {
+      this.fav = !this.fav;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { breakfast: { is_favorite: this.fav } }
+      });
+    }
+  }">
                             <div class="flex items-center justify-between">
                                 <label class="block text-sm font-medium text-gray-700">
-                                    Breakfast
-                                    {% if breakfast.is_takeout %}
-                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                    {% endif %}
+                                    breakfast
+                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
                                 </label>
+
                                 <div class="flex items-center gap-2">
+                                    <!-- Takeout toggle pill -->
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
+                                        @click="toggleTakeout($el)">
+                                        Takeout
+                                    </button>
 
                                     <!-- Favorite toggle pill -->
-                                    <div x-data="{
-                                        fav: {{ 'true' if breakfast.is_favorite else 'false' }},
-                                        toggleFav() {
-                                        this.fav = !this.fav;
-                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
-                                            meals: {
-                                            breakfast: {
-                                                is_favorite: this.fav
-                                            }
-                                            }
-                                        });
-                                        }
-                                    }">
-                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                            @click="toggleFav()">
-                                            Favorite
-                                        </button>
-                                    </div>
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                        @click="toggleFav($el)">
+                                        Favorite
+                                    </button>
 
                                     <!-- Swap toggle -->
                                     <button type="button"
                                         class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
                                         @click="window.armSwap($el.closest('.meal-day-card'), 'breakfast', $el.closest('[data-meal-block]'))"
-                                        title="Swap Breakfast with another day">
+                                        title="Swap breakfast with another day">
                                         ⇄ Swap
                                     </button>
                                 </div>
                             </div>
 
                             <textarea name="days[{{ i }}][breakfast]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if breakfast.is_takeout else '' }}"
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                :class="{ 'bg-orange-100': takeout }"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ breakfast.description if breakfast else '' }}</textarea>
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="breakfast"></div>
                         </div>
 
                         <!-- Lunch -->
-                        <div data-meal-block data-field="lunch">
-                            {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") |
-                            first %}
+                        {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") | first %}
+                        <div data-meal-block data-field="lunch" x-data="{
+    takeout: {{ 'true' if lunch and lunch.is_takeout else 'false' }},
+    fav: {{ 'true' if lunch and lunch.is_favorite else 'false' }},
+    index: {{ i }},
+    toggleTakeout(el) {
+      this.takeout = !this.takeout;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { lunch: { is_takeout: this.takeout } }
+      });
+    },
+    toggleFav(el) {
+      this.fav = !this.fav;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { lunch: { is_favorite: this.fav } }
+      });
+    }
+  }">
                             <div class="flex items-center justify-between">
                                 <label class="block text-sm font-medium text-gray-700">
                                     Lunch
-                                    {% if lunch.is_takeout %}
-                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                    {% endif %}
+                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
                                 </label>
+
                                 <div class="flex items-center gap-2">
+                                    <!-- Takeout toggle pill -->
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
+                                        @click="toggleTakeout($el)">
+                                        Takeout
+                                    </button>
 
                                     <!-- Favorite toggle pill -->
-                                    <div x-data="{
-                                        fav: {{ 'true' if lunch.is_favorite else 'false' }},
-                                        toggleFav() {
-                                        this.fav = !this.fav;
-                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
-                                            meals: {
-                                            lunch: {
-                                                is_favorite: this.fav
-                                            }
-                                            }
-                                        });
-                                        }
-                                    }">
-                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                            @click="toggleFav()">
-                                            Favorite
-                                        </button>
-                                    </div>
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                        @click="toggleFav($el)">
+                                        Favorite
+                                    </button>
 
                                     <!-- Swap toggle -->
                                     <button type="button"
@@ -175,45 +195,54 @@
                             </div>
 
                             <textarea name="days[{{ i }}][lunch]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if lunch.is_takeout else '' }}"
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                :class="{ 'bg-orange-100': takeout }"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ lunch.description if lunch else '' }}</textarea>
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="lunch"></div>
                         </div>
 
                         <!-- Dinner -->
-                        <div data-meal-block data-field="dinner">
-                            {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") |
-                            first %}
+                        {# Define dinner BEFORE it is used #}
+                        {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") | first %}
+                        <div data-meal-block data-field="dinner" x-data="{
+    takeout: {{ 'true' if dinner and dinner.is_takeout else 'false' }},
+    fav: {{ 'true' if dinner and dinner.is_favorite else 'false' }},
+    index: {{ i }},
+    toggleTakeout(el) {
+      this.takeout = !this.takeout;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { dinner: { is_takeout: this.takeout } }
+      });
+    },
+    toggleFav(el) {
+      this.fav = !this.fav;
+      // Why: ensure autosave has correct context element
+      window.autoSaveCard(el.closest('.meal-day-card'), el, {
+        meals: { dinner: { is_favorite: this.fav } }
+      });
+    }
+  }">
                             <div class="flex items-center justify-between">
                                 <label class="block text-sm font-medium text-gray-700">
                                     Dinner
-                                    {% if dinner.is_takeout %}
-                                    <span class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                    {% endif %}
+                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
                                 </label>
-                                <div class="flex items-center gap-2">
 
+                                <div class="flex items-center gap-2">
+                                    <!-- Takeout toggle pill -->
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
+                                        @click="toggleTakeout($el)">
+                                        Takeout
+                                    </button>
 
                                     <!-- Favorite toggle pill -->
-                                    <div x-data="{
-                                        fav: {{ 'true' if dinner.is_favorite else 'false' }},
-                                        toggleFav() {
-                                        this.fav = !this.fav;
-                                        window.autoSaveCard($el.closest('.meal-day-card'), $el, {
-                                            meals: {
-                                            dinner: {
-                                                is_favorite: this.fav
-                                            }
-                                            }
-                                        });
-                                        }
-                                    }">
-                                        <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                            :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                            @click="toggleFav()">
-                                            Favorite
-                                        </button>
-                                    </div>
+                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                                        @click="toggleFav($el)">
+                                        Favorite
+                                    </button>
 
                                     <!-- Swap toggle -->
                                     <button type="button"
@@ -226,8 +255,10 @@
                             </div>
 
                             <textarea name="days[{{ i }}][dinner]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2 {{ 'bg-orange-100' if dinner.is_takeout else '' }}"
+                                class="meal-input mt-1 block w-full border rounded-md p-2"
+                                :class="{ 'bg-orange-100': takeout }"
                                 @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ dinner.description if dinner else '' }}</textarea>
+
                             <div class="save-status text-xs mt-1 text-gray-400" data-field="dinner"></div>
                         </div>
                     </div>
@@ -247,6 +278,28 @@
         aria-live="polite"></div>
 
     <script>
+        /**
+         * GOAL
+         * -----
+         * When swapping a meal between two days, transfer BOTH the text and the
+         * per-meal flags (is_favorite, is_takeout). Ensure:
+         *  - UI state updates immediately (Alpine state + conditional classes).
+         *  - Backend receives the full, correct state for ALL meals to avoid wiping.
+         *  - Fallbacks exist if Alpine hasn't mounted yet.
+         */
+
+        // -------- Payday counter ----------
+        fetch("/api/next-payday")
+            .then(res => res.json())
+            .then(data => document.getElementById("payday-counter").textContent = data.days_until_next_payday)
+            .catch(() => document.getElementById("payday-counter").textContent = "N/A");
+
+        // -------- Eat Out counter ----------
+        fetch("/api/how-many-times")
+            .then(res => res.json())
+            .then(data => document.getElementById("eat-out-counter").textContent = data.count)
+            .catch(() => document.getElementById("eat-out-counter").textContent = "N/A");
+
         // -------- Toast ----------
         function showToast(message, { type = 'error', timeout = 3000 } = {})
         {
@@ -267,33 +320,116 @@
             return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         }
 
-        function collectDayPayload(card)
+        /**
+         * Safely read meal flags from a meal block element.
+         * WHY: Flags live in Alpine component state; if Alpine hasn't mounted,
+         *      we fallback to data attributes (if present) or default false.
+         */
+        function getMealFlags(blockEl)
         {
-            const id = Number(card.dataset.dayId);
-            const isSammyInp = card.querySelector('input[name$="[is_starred]"]');
-            const isWorkInp = card.querySelector('input[name$="[is_sammy_working]"]');
-            const getBool = (el) => el ? (String(el.value).toLowerCase() === 'on') : false;
-            const breakfastEl = card.querySelector('textarea[name$="[breakfast]"]');
-            const lunchEl = card.querySelector('textarea[name$="[lunch]"]');
-            const dinnerEl = card.querySelector('textarea[name$="[dinner]"]');
+            try
+            {
+                if (window.Alpine && blockEl)
+                {
+                    const data = Alpine.$data(blockEl);
+                    if (data && ("fav" in data || "takeout" in data))
+                    {
+                        return {
+                            is_favorite: Boolean(data.fav),
+                            is_takeout: Boolean(data.takeout)
+                        };
+                    }
+                }
+            } catch { /* ignore and use fallbacks */ }
+            // Fallbacks via data-* attributes (optional: set elsewhere)
+            const favAttr = blockEl?.dataset?.fav;
+            const takeoutAttr = blockEl?.dataset?.takeout;
             return {
-                id,
-                is_starred: getBool(isSammyInp),
-                is_sammy_working: getBool(isWorkInp),
-                breakfast: breakfastEl ? breakfastEl.value : "",
-                lunch: lunchEl ? lunchEl.value : "",
-                dinner: dinnerEl ? dinnerEl.value : ""
+                is_favorite: favAttr === 'true',
+                is_takeout: takeoutAttr === 'true'
             };
         }
 
+        /**
+         * Set meal flags into the meal block element and update UI immediately.
+         * WHY: After swap, the visual pills and textarea background should reflect
+         *      the new flags without a page reload.
+         */
+        function setMealFlags(blockEl, { is_favorite, is_takeout })
+        {
+            // Persist as data-* so non-Alpine code can read it if needed.
+            if (blockEl && blockEl.dataset)
+            {
+                blockEl.dataset.fav = String(!!is_favorite);
+                blockEl.dataset.takeout = String(!!is_takeout);
+            }
+            // Update Alpine reactive state if mounted.
+            try
+            {
+                if (window.Alpine && blockEl)
+                {
+                    const data = Alpine.$data(blockEl);
+                    if (data)
+                    {
+                        data.fav = !!is_favorite;
+                        data.takeout = !!is_takeout;
+                    }
+                }
+            } catch { /* ignore; Alpine might not be ready */ }
+        }
+
+        /**
+         * Build an object of all meal flags for a given day card.
+         * WHY: We always POST the full meal flags (breakfast/lunch/dinner) to avoid
+         *      the backend overwriting other meals when a partial object is sent.
+         */
+        function collectMealsState(card)
+        {
+            const fields = ['breakfast', 'lunch', 'dinner'];
+            const meals = {};
+            for (const f of fields)
+            {
+                const el = card.querySelector(`[data-meal-block][data-field="${f}"]`);
+                meals[f] = getMealFlags(el);
+            }
+            return meals;
+        }
+
+        /**
+         * Build a full day payload for saving.
+         * WHY: Prevents data loss by including all text fields and all per-meal flags.
+         */
+        function collectDayPayload(card)
+        {
+            const id = Number(card.dataset.dayId);
+            const isStarInp = card.querySelector('input[name$="[is_starred]"]');
+            const isWorkInp = card.querySelector('input[name$="[is_sammy_working]"]');
+            const getBool = (el) =>
+            {
+                if (!el) return false;
+                // WHY: Some templates use checkboxes, some use value=on. Handle both.
+                return el.type === 'checkbox' ? !!el.checked : String(el.value).toLowerCase() === 'on';
+            };
+
+            const breakfastEl = card.querySelector('textarea[name$="[breakfast]"]');
+            const lunchEl = card.querySelector('textarea[name$="[lunch]"]');
+            const dinnerEl = card.querySelector('textarea[name$="[dinner]"]');
+
+            return {
+                id,
+                is_starred: getBool(isStarInp),
+                is_sammy_working: getBool(isWorkInp),
+                breakfast: breakfastEl ? breakfastEl.value : "",
+                lunch: lunchEl ? lunchEl.value : "",
+                dinner: dinnerEl ? dinnerEl.value : "",
+                meals: collectMealsState(card)
+            };
+        }
+
+        // Debounce helper (kept for parity with other inputs)
         function debounce(fn, wait = 600)
         {
-            let t;
-            return (...args) =>
-            {
-                clearTimeout(t);
-                t = setTimeout(() => fn(...args), wait);
-            };
+            let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), wait); };
         }
 
         // -------- Save helpers ----------
@@ -301,9 +437,7 @@
         {
             const day = collectDayPayload(card);
             const res = await fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ day })
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day })
             });
             if (!res.ok)
             {
@@ -314,7 +448,7 @@
             return true;
         }
 
-        // Utility function to merge deeply
+        // Deep merge utility for overrides
         window.deepMerge = function (target, source)
         {
             for (const key in source)
@@ -327,26 +461,18 @@
             return Object.assign(target || {}, source);
         }
 
+        /**
+         * Auto-save card with optional overrides.
+         * WHY: Toggles call this to save flag changes. We base from the FULL current
+         *      card state, then merge overrides (e.g., meals.dinner.is_favorite=true).
+         */
         window.autoSaveCard = function (card, sourceEl = null, overrides = {})
         {
-            const dayId = card.dataset.dayId;
-            const payload = {
-                id: parseInt(dayId),
-                breakfast: card.querySelector('[name*="[breakfast]"]')?.value || '',
-                lunch: card.querySelector('[name*="[lunch]"]')?.value || '',
-                dinner: card.querySelector('[name*="[dinner]"]')?.value || '',
-                is_starred: card.querySelector('[name*="[is_starred]"]')?.value === 'on',
-                is_sammy_working: card.querySelector('[name*="[is_sammy_working]"]')?.value === 'on',
-                meals: {}
-            };
-
-            // Merge any overrides (like meals.breakfast.is_favorite)
-            window.deepMerge(payload, overrides);
+            const base = collectDayPayload(card);
+            const payload = window.deepMerge(base, overrides);
 
             fetch('/api/save', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ day: payload })
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ day: payload })
             }).then(r =>
             {
                 if (r.ok && sourceEl)
@@ -363,38 +489,6 @@
             });
         };
 
-
-        // Intercept "Save All" to use AJAX /api/save
-        (function wireFormAjax()
-        {
-            const form = document.getElementById('saveForm');
-            if (!form) return;
-            form.addEventListener('submit', async (e) =>
-            {
-                e.preventDefault();
-                const cards = Array.from(document.querySelectorAll('.meal-day-card'));
-                const days = cards.map(collectDayPayload);
-                try
-                {
-                    const res = await fetch('/api/save', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ days })
-                    });
-                    if (!res.ok)
-                    {
-                        let msg = 'Save failed';
-                        try { const data = await res.json(); msg = data.message || msg; } catch { }
-                        throw new Error(msg);
-                    }
-                    showToast('All changes saved', { type: 'ok', timeout: 1500 });
-                } catch (err)
-                {
-                    showToast(err.message || 'Save error', { type: 'error' });
-                }
-            });
-        })();
-
         // -------- Swap logic ----------
         window._swapState = null;
 
@@ -407,40 +501,66 @@
             window._swapState = null;
         }
 
+        /**
+         * Resolve a meal block element reliably.
+         * WHY: HTML may provide wrapperEl; otherwise fall back to legacy class or data-* selector.
+         */
+        function resolveMealBlock(cardEl, field, wrapperEl)
+        {
+            return (
+                wrapperEl
+                || cardEl.querySelector(`.meal-block-${field}`)
+                || cardEl.querySelector(`[data-meal-block][data-field="${field}"]`)
+            );
+        }
+
         // First click arms a swap; second click (same field, different day) completes it
         window.armSwap = function (cardEl, field, wrapperEl)
         {
-            // cancel if same element clicked again
-            if (window._swapState &&
-                window._swapState.cardEl === cardEl &&
-                window._swapState.field === field)
+            const blockEl = resolveMealBlock(cardEl, field, wrapperEl);
+            if (!blockEl)
+            {
+                showToast(`Could not find Alpine block for ${field}`, { type: 'error' });
+                return;
+            }
+
+            if (window._swapState && window._swapState.cardEl === cardEl && window._swapState.field === field)
             {
                 clearSwapUI();
                 return;
             }
 
-            // enforce same meal type
             if (window._swapState && window._swapState.field !== field)
             {
                 showToast(`Choose another ${window._swapState.field} to swap or press Esc to cancel`, { type: 'error' });
                 return;
             }
 
-            // if armed and same field, finish swap
             if (window._swapState && window._swapState.field === field && window._swapState.cardEl !== cardEl)
             {
-                completeSwap(window._swapState.cardEl, cardEl, field, window._swapState.wrapperEl, wrapperEl);
+                completeSwap(
+                    window._swapState.cardEl,
+                    cardEl,
+                    field,
+                    window._swapState.wrapperEl,
+                    wrapperEl || blockEl,
+                    window._swapState.blockEl,
+                    blockEl
+                );
                 return;
             }
 
-            // arm fresh
             clearSwapUI();
-            window._swapState = { cardEl, field, wrapperEl };
-            wrapperEl.classList.add('ring-2', 'ring-emerald-400', 'rounded');
+            window._swapState = { cardEl, field, wrapperEl: wrapperEl || blockEl, blockEl };
+            (wrapperEl || blockEl).classList.add('ring-2', 'ring-emerald-400', 'rounded');
             showToast(`Select another ${field} to swap`, { type: 'ok', timeout: 1200 });
         };
 
-        async function completeSwap(cardA, cardB, field, wrapA, wrapB)
+        /**
+         * Swap the text AND flags between two days for a given meal field.
+         * WHY: Ensure both the backend and the UI reflect the swapped flags.
+         */
+        async function completeSwap(cardA, cardB, field, wrapA, wrapB, blockA, blockB)
         {
             try
             {
@@ -453,19 +573,24 @@
                     return;
                 }
 
-                // swap values in DOM
-                const tmp = taA.value;
-                taA.value = taB.value;
-                taB.value = tmp;
+                // 1) Swap the textarea values in the DOM (immediate visual change).
+                const tmpText = taA.value; taA.value = taB.value; taB.value = tmpText;
 
-                // prepare full payloads for both days (prevents wiping other values)
+                // 2) Read current flags from each meal block.
+                const flagsA = getMealFlags(blockA); // { is_favorite, is_takeout }
+                const flagsB = getMealFlags(blockB);
+
+                // 3) Immediately set/swizzle the flags on the UI components (reactive update).
+                setMealFlags(blockA, flagsB);
+                setMealFlags(blockB, flagsA);
+
+                // 4) Build FULL payloads for both cards AFTER we mutated UI state, so reads reflect new flags.
                 const dayA = collectDayPayload(cardA);
                 const dayB = collectDayPayload(cardB);
 
+                // 5) Persist to backend in a single request to keep it atomic.
                 const res = await fetch('/api/save', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ days: [dayA, dayB] })
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ days: [dayA, dayB] })
                 });
 
                 if (!res.ok)
@@ -475,15 +600,14 @@
                     throw new Error(msg);
                 }
 
-                markInlineSaved(wrapA);
-                markInlineSaved(wrapB);
+                // 6) Inline success markers and UI cleanup.
+                markInlineSaved(wrapA); markInlineSaved(wrapB);
                 clearSwapUI();
                 showToast('Meals swapped', { type: 'ok', timeout: 1200 });
 
             } catch (err)
             {
-                markInlineFailed(wrapA);
-                markInlineFailed(wrapB);
+                markInlineFailed(wrapA); markInlineFailed(wrapB);
                 showToast(err.message || 'Swap failed', { type: 'error' });
                 clearSwapUI();
             }
