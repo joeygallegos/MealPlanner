@@ -61,7 +61,15 @@ database = os.getenv("DB_NAME", "")
 DATABASE_URL = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
 print("DATABASE_URL:", DATABASE_URL)
 
-engine = create_engine(DATABASE_URL, echo=True, pool_size=20, max_overflow=0)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    pool_size=10,
+    max_overflow=5,
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
