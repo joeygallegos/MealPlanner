@@ -17,13 +17,62 @@
         <h3 class="text-1xl font-bold mb-4"><span id="eat-out-counter">...</span> days eating out last week!
         </h3>
 
+        {# =========================
+        Macro: single meal block
+        ========================= #}
+        {% macro meal_block(i, day, field, label) -%}
+        {% set meal = day.meals | selectattr("type.value", "equalto", field) | first %}
+        <div data-meal-block data-field="{{ field }}" class="meal-block-{{ field }}"
+            data-fav="{{ 'true' if meal and meal.is_favorite else 'false' }}"
+            data-takeout="{{ 'true' if meal and meal.is_takeout else 'false' }}" x-data="{
+      field: '{{ field }}',
+      takeout: {{ 'true' if meal and meal.is_takeout else 'false' }},
+      fav: {{ 'true' if meal and meal.is_favorite else 'false' }},
+      index: {{ i }},
+      toggleTakeout(el){
+        this.takeout = !this.takeout;
+        window.autoSaveCard(el.closest('.meal-day-card'), el, { meals: { [this.field]: { is_takeout: this.takeout } } });
+      },
+      toggleFav(el){
+        this.fav = !this.fav;
+        window.autoSaveCard(el.closest('.meal-day-card'), el, { meals: { [this.field]: { is_favorite: this.fav } } });
+      }
+    }">
+            <div class="flex items-center justify-between">
+                <label class="block text-sm font-medium text-gray-700">
+                    {{ label }}
+                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
+                </label>
+
+                <div class="flex items-center gap-2">
+                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
+                        @click="toggleTakeout($el)">Takeout</button>
+
+                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
+                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                        @click="toggleFav($el)">Favorite</button>
+
+                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                        @click="window.armSwap($el.closest('.meal-day-card'), '{{ field }}', $el.closest('[data-meal-block]'))"
+                        :title="`Swap ${field} with another day`">⇄ Swap</button>
+                </div>
+            </div>
+
+            <textarea name="days[{{ i }}][{{ field }}]" rows="5"
+                class="meal-input mt-1 block w-full border rounded-md p-2" :class="{ 'bg-orange-100': takeout }"
+                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ meal.description if meal else '' }}</textarea>
+
+            <div class="save-status text-xs mt-1 text-gray-400" data-field="{{ field }}"></div>
+        </div>
+        {%- endmacro %}
+
         <form id="saveForm" method="post" action="/save">
             <div class="flex space-x-4 overflow-x-auto pb-4">
                 {% for day in days %}
                 {% set i = loop.index0 %}
                 <div class="meal-day-card min-w-[320px] bg-white p-4 rounded-lg shadow border flex-shrink-0"
                     data-day-id="{{ day.id }}">
-                    <!-- Hidden day ID -->
                     <input type="hidden" name="days[{{ i }}][id]" value="{{ day.id }}">
 
                     <div class="flex justify-between items-start mb-4">
@@ -39,13 +88,11 @@
                             <button type="button"
                                 @click="starred = !starred; $refs.star{{ i }}.value = starred ? 'on' : 'off'; $nextTick(() => window.autoSaveCard($el.closest('.meal-day-card')))"
                                 class="focus:outline-none" title="Sammy home">
-                                <!-- Active -->
                                 <svg x-show="starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-purple-400"
                                     fill="currentColor" viewBox="0 0 20 20">
                                     <path
                                         d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.966a1 1 0 00.95.69h4.176c.969 0 1.371 1.24.588 1.81l-3.38 2.455a1 1 0 00-.364 1.118l1.287 3.966c.3.921-.755 1.688-1.54 1.118l-3.38-2.455a1 1 0 00-1.175 0l-3.38 2.455c-.785.57-1.84-.197-1.54-1.118l1.286-3.966a1 1 0 00-.364-1.118L2.05 9.393c-.783-.57-.38-1.81.588-1.81h4.176a1 1 0 00.95-.69l1.286-3.966z" />
                                 </svg>
-                                <!-- Inactive -->
                                 <svg x-show="!starred" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-gray-500"
                                     fill="none" viewBox="0 0 20 20" stroke="currentColor">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -61,14 +108,12 @@
                             <button type="button" x-data="{ active: {{ 'true' if day.is_sammy_working else 'false' }} }"
                                 @click="active = !active; $refs.work{{ i }}.value = active ? 'on' : 'off'; $nextTick(() => window.autoSaveCard($el.closest('.meal-day-card')))"
                                 class="focus:outline-none" title="Work day">
-                                <!-- Active -->
                                 <svg x-show="active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                     viewBox="0 0 24 24" fill="currentColor" class="size-6 text-purple-400">
                                     <path
                                         d="M21.75 6.75a4.5 4.5 0 0 1-4.884 4.484c-1.076-.091-2.264.071-2.95.904l-7.152 8.684a2.548 2.548 0 1 1-3.586-3.586l8.684-7.152c.833-.686.995-1.874.904-2.95a4.5 4.5 0 0 1 6.336-4.486l-3.276 3.276a3.004 3.004 0 0 0 2.25 2.25l3.276-3.276c.256.565.398 1.192.398 1.852Z" />
                                     <path d="M4.867 19.125h.008v.008h-.008v-.008Z" />
                                 </svg>
-                                <!-- Inactive -->
                                 <svg x-show="!active" xmlns="http://www.w3.org/2000/svg" width="20" height="20"
                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
                                     class="size-6 text-gray-500">
@@ -81,186 +126,12 @@
                         </div>
                     </div>
 
-                    <!-- Meals -->
+                    <!-- Meals via macro + loop -->
                     <div class="space-y-3">
-                        <!-- Breakfast -->
-                        {% set breakfast = day.meals | selectattr("type.value", "equalto", "breakfast") | first %}
-                        <div data-meal-block data-field="breakfast" x-data="{
-    takeout: {{ 'true' if breakfast and breakfast.is_takeout else 'false' }},
-    fav: {{ 'true' if breakfast and breakfast.is_favorite else 'false' }},
-    index: {{ i }},
-    toggleTakeout(el) {
-      this.takeout = !this.takeout;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { breakfast: { is_takeout: this.takeout } }
-      });
-    },
-    toggleFav(el) {
-      this.fav = !this.fav;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { breakfast: { is_favorite: this.fav } }
-      });
-    }
-  }">
-                            <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">
-                                    breakfast
-                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                </label>
-
-                                <div class="flex items-center gap-2">
-                                    <!-- Takeout toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
-                                        @click="toggleTakeout($el)">
-                                        Takeout
-                                    </button>
-
-                                    <!-- Favorite toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                        @click="toggleFav($el)">
-                                        Favorite
-                                    </button>
-
-                                    <!-- Swap toggle -->
-                                    <button type="button"
-                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                        @click="window.armSwap($el.closest('.meal-day-card'), 'breakfast', $el.closest('[data-meal-block]'))"
-                                        title="Swap breakfast with another day">
-                                        ⇄ Swap
-                                    </button>
-                                </div>
-                            </div>
-
-                            <textarea name="days[{{ i }}][breakfast]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
-                                :class="{ 'bg-orange-100': takeout }"
-                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ breakfast.description if breakfast else '' }}</textarea>
-                            <div class="save-status text-xs mt-1 text-gray-400" data-field="breakfast"></div>
-                        </div>
-
-                        <!-- Lunch -->
-                        {% set lunch = day.meals | selectattr("type.value", "equalto", "lunch") | first %}
-                        <div data-meal-block data-field="lunch" x-data="{
-    takeout: {{ 'true' if lunch and lunch.is_takeout else 'false' }},
-    fav: {{ 'true' if lunch and lunch.is_favorite else 'false' }},
-    index: {{ i }},
-    toggleTakeout(el) {
-      this.takeout = !this.takeout;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { lunch: { is_takeout: this.takeout } }
-      });
-    },
-    toggleFav(el) {
-      this.fav = !this.fav;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { lunch: { is_favorite: this.fav } }
-      });
-    }
-  }">
-                            <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">
-                                    Lunch
-                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                </label>
-
-                                <div class="flex items-center gap-2">
-                                    <!-- Takeout toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
-                                        @click="toggleTakeout($el)">
-                                        Takeout
-                                    </button>
-
-                                    <!-- Favorite toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                        @click="toggleFav($el)">
-                                        Favorite
-                                    </button>
-
-                                    <!-- Swap toggle -->
-                                    <button type="button"
-                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                        @click="window.armSwap($el.closest('.meal-day-card'), 'lunch', $el.closest('[data-meal-block]'))"
-                                        title="Swap lunch with another day">
-                                        ⇄ Swap
-                                    </button>
-                                </div>
-                            </div>
-
-                            <textarea name="days[{{ i }}][lunch]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
-                                :class="{ 'bg-orange-100': takeout }"
-                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ lunch.description if lunch else '' }}</textarea>
-                            <div class="save-status text-xs mt-1 text-gray-400" data-field="lunch"></div>
-                        </div>
-
-                        <!-- Dinner -->
-                        {# Define dinner BEFORE it is used #}
-                        {% set dinner = day.meals | selectattr("type.value", "equalto", "dinner") | first %}
-                        <div data-meal-block data-field="dinner" x-data="{
-    takeout: {{ 'true' if dinner and dinner.is_takeout else 'false' }},
-    fav: {{ 'true' if dinner and dinner.is_favorite else 'false' }},
-    index: {{ i }},
-    toggleTakeout(el) {
-      this.takeout = !this.takeout;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { dinner: { is_takeout: this.takeout } }
-      });
-    },
-    toggleFav(el) {
-      this.fav = !this.fav;
-      // Why: ensure autosave has correct context element
-      window.autoSaveCard(el.closest('.meal-day-card'), el, {
-        meals: { dinner: { is_favorite: this.fav } }
-      });
-    }
-  }">
-                            <div class="flex items-center justify-between">
-                                <label class="block text-sm font-medium text-gray-700">
-                                    Dinner
-                                    <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
-                                </label>
-
-                                <div class="flex items-center gap-2">
-                                    <!-- Takeout toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
-                                        @click="toggleTakeout($el)">
-                                        Takeout
-                                    </button>
-
-                                    <!-- Favorite toggle pill -->
-                                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
-                                        @click="toggleFav($el)">
-                                        Favorite
-                                    </button>
-
-                                    <!-- Swap toggle -->
-                                    <button type="button"
-                                        class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                                        @click="window.armSwap($el.closest('.meal-day-card'), 'dinner', $el.closest('[data-meal-block]'))"
-                                        title="Swap dinner with another day">
-                                        ⇄ Swap
-                                    </button>
-                                </div>
-                            </div>
-
-                            <textarea name="days[{{ i }}][dinner]" rows="5"
-                                class="meal-input mt-1 block w-full border rounded-md p-2"
-                                :class="{ 'bg-orange-100': takeout }"
-                                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ dinner.description if dinner else '' }}</textarea>
-
-                            <div class="save-status text-xs mt-1 text-gray-400" data-field="dinner"></div>
-                        </div>
+                        {% set MEALS = [ ('breakfast','Breakfast'), ('lunch','Lunch'), ('dinner','Dinner') ] %}
+                        {% for key, label in MEALS %}
+                        {{ meal_block(i, day, key, label) }}
+                        {% endfor %}
                     </div>
                 </div>
                 {% endfor %}
