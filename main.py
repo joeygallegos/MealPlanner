@@ -150,46 +150,6 @@ def _update_days_from_payload(days: list[dict], db):
                 )
 
 
-@app.post("/save")
-async def save_day(request: Request):
-    form: FormData = await request.form()
-    db = next(get_db())
-
-    days_data = {}
-    pattern = re.compile(r"days\[(\d+)]((?:\[[\w]+\])*)")
-
-    for key, value in form.items():
-        match = pattern.match(key)
-        if not match:
-            continue
-
-        idx, rest = match.groups()
-        keys = [idx] + [k.strip("[]") for k in rest.split("][") if k]
-
-        _assign_nested_key(days_data, keys, value)
-
-    # DEBUG:
-    print("Parsed days_data:", days_data)
-
-    # Build payload
-    json_days = []
-    for day_info in days_data.values():
-        payload = {
-            "id": int(day_info["id"]),
-            "is_starred": day_info.get("is_starred", "off").lower() == "on",
-            "is_sammy_working": day_info.get("is_sammy_working", "off").lower() == "on",
-            "breakfast": day_info.get("breakfast", ""),
-            "lunch": day_info.get("lunch", ""),
-            "dinner": day_info.get("dinner", ""),
-            "meals": day_info.get("meals", {}),  # Full nested dict
-        }
-        json_days.append(payload)
-
-    _update_days_from_payload(json_days, db)
-    db.commit()
-    return RedirectResponse(url="/", status_code=303)
-
-
 @app.post("/api/save", response_class=JSONResponse)
 def api_save(payload: Dict[str, Any] = Body(...)):
     """
