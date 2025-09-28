@@ -12,10 +12,44 @@
 
 <body class="bg-white-100">
     <div class="w-full px-8 py-12" x-data>
-        <h1 class="text-3xl font-bold">Meal Planner - 🤑 <span id="payday-counter">...</span> days until payday!
-        </h1>
-        <h3 class="text-1xl font-bold mb-4"><span id="eat-out-counter">...</span> days eating out last week!
-        </h3>
+        <!-- Header -->
+        <header class="mb-6">
+            {% set cfg = template_config %}
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div class="flex items-center gap-4">
+                    {% if cfg.title %}
+                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner - {{ cfg.title }}</h1>
+                    {% else %}
+                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner</h1>
+                    {% endif %}
+                    {% if cfg.show_days_until_payday %}
+                    <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold
+                       bg-yellow-300 text-yellow-900 shadow-sm ring-1 ring-yellow-400/60">
+                        🤑 <span id="payday-counter">...</span> days
+                    </span>
+                    {% endif %}
+                </div>
+
+                <nav class="flex items-center gap-2">
+                    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-blue-500 text-white hover:bg-blue-600 shadow-sm transition">
+                        Home
+                    </a>
+                    <a href="/backwards" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-purple-500 text-white hover:bg-purple-600 shadow-sm transition">
+                        Backwards
+                    </a>
+                </nav>
+            </div>
+
+            {% if cfg.show_days_eating_out %}
+            <h3 class="text-lg font-bold mt-1">
+                <span id="eat-out-counter">...</span> days eating out last week!
+            </h3>
+            {% endif %}
+        </header>
+
+
 
         {# =========================
         Macro: single meal block
@@ -71,8 +105,8 @@
             <div class="flex space-x-4 overflow-x-auto pb-4">
                 {% for day in days %}
                 {% set i = loop.index0 %}
-                <div class="meal-day-card min-w-[320px] bg-white p-4 rounded-lg shadow border flex-shrink-0"
-                    data-day-id="{{ day.id }}">
+                <div class="meal-day-card min-w-[320px] p-4 rounded-lg shadow border flex-shrink-0
+                    {{ 'bg-gray-200' if cfg.days_are_stale else 'bg-white' }}" data-day-id="{{ day.id }}">
                     <input type="hidden" name="days[{{ i }}][id]" value="{{ day.id }}">
 
                     <div class="flex justify-between items-start mb-4">

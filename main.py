@@ -28,6 +28,7 @@ templates = Jinja2Templates(directory="templates")
 
 # Constant for UI and API logic
 DAYS = 9
+DAYS_BACKWARDS = 3  # How many days backwards to show on /backwards
 
 
 def get_db():
@@ -71,7 +72,54 @@ def read_index(request: Request):
 
         days.append(meal_day)
 
-    return templates.TemplateResponse("index.html", {"request": request, "days": days})
+    # Define template configuration: show_days_until_payday, show_days_eating_out
+    template_config = {
+        "title": "Home",
+        "show_days_until_payday": True,
+        "show_days_eating_out": True,
+        "days_are_stale": False,
+    }
+
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "days": days, "template_config": template_config},
+    )
+
+
+@app.get("/backwards", response_class=HTMLResponse)
+def backwards_index(request: Request):
+    """
+    Homepage HTML — displays last N days of meals.
+    """
+    db = next(get_db())
+    today = date.today()
+    days = []
+
+    for i in range(1, DAYS_BACKWARDS + 1):
+        current_date = today - timedelta(days=i)
+        meal_day = (
+            db.query(MealDay)
+            .options(joinedload(MealDay.meals))
+            .filter(MealDay.date == current_date)
+            .first()
+        )
+        days.append(meal_day)
+
+    # Reverse to show oldest first
+    days.reverse()
+
+    # Define template configuration: show_days_until_payday, show_days_eating_out
+    template_config = {
+        "title": "Past Meals",
+        "show_days_until_payday": False,
+        "show_days_eating_out": False,
+        "days_are_stale": True,
+    }
+
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "days": days, "template_config": template_config},
+    )
 
 
 def _assign_nested_key(d, keys, value):
