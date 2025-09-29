@@ -1,0 +1,155 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meal Planner</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+</head>
+
+<body class="bg-white-100">
+    <div class="w-full px-8 py-12" x-data>
+        <!-- Header -->
+        <header class="mb-6">
+            {% set cfg = template_config %}
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div class="flex items-center gap-4">
+                    {% if cfg.title %}
+                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner - {{ cfg.title }}</h1>
+                    {% else %}
+                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner</h1>
+                    {% endif %}
+                    {% if cfg.show_days_until_payday %}
+                    <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold
+                       bg-yellow-300 text-yellow-900 shadow-sm ring-1 ring-yellow-400/60">
+                        🤑 <span id="payday-counter">...</span> days
+                    </span>
+                    {% endif %}
+                </div>
+
+                <nav class="flex items-center gap-2">
+                    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-blue-300 text-white hover:bg-blue-600 shadow-sm transition">
+                        Home
+                    </a>
+                    <a href="/backwards" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-purple-300 text-white hover:bg-purple-600 shadow-sm transition">
+                        Backwards
+                    </a>
+                    <a href="/search" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-green-300 text-white hover:bg-green-600 shadow-sm transition">
+                        Search
+                    </a>
+                </nav>
+            </div>
+        </header>
+
+
+
+        <!-- Search form -->
+        {# Query /api/search using ajax #}
+        <form action="/api/search" method="get" class="mt-6 flex items-center gap-3">
+            <input type="text" name="query" placeholder="Search meals..."
+                class="border border-gray-300 rounded-md px-4 py-2" />
+            <button type="submit" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
+                bg-blue-500 text-white hover:bg-blue-600 shadow-sm transition">
+                Search
+            </button>
+            <label class="inline-flex items-center gap-2">
+                <input type="checkbox" name="include_takeout" class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                <span class="text-sm text-gray-700">Include Takeout</span>
+            </label>
+            <label class="inline-flex items-center gap-2">
+                <input type="checkbox" name="only_favorites" class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                <span class="text-sm text-gray-700">Only Favorites</span>
+            </label>
+        </form>
+
+        <div id="search-results" class="mt-6 flex flex-col gap-4">
+            <!-- Search results will be populated here -->
+        </div>
+
+        <div class="mt-6 flex items-center gap-3">
+            <span class="text-gray-500 text-sm">Searching as you type. Click to save meals for the home screen</span>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed bottom-4 right-4 z-50 px-4 py-3 rounded shadow-lg text-white" role="status"
+        aria-live="polite"></div>
+
+    <script>
+        // As I type, search for meals using the form's action URL and do not refresh the page
+        const searchForm = document.querySelector('form[action="/api/search"]');
+        const searchInput = searchForm.querySelector('input[name="query"]');
+
+        searchInput.addEventListener('input', () =>
+        {
+            const query = searchInput.value.trim();
+            const includeTakeout = searchForm.querySelector('input[name="include_takeout"]').checked;
+            const onlyFavorites = searchForm.querySelector('input[name="only_favorites"]').checked;
+
+            if (query)
+            {
+                fetch(`/api/search?query=${encodeURIComponent(query)}&include_takeout=${includeTakeout}&only_favorites=${onlyFavorites}`)
+                    .then(response => response.json())
+                    .then(data =>
+                    {
+                        // Handle search results
+                        console.log('Search results:', data);
+
+                        // Fill the UI with meal boxes
+                        const resultsContainer = document.getElementById('search-results');
+                        resultsContainer.innerHTML = '';
+
+                        data.results.forEach(meal =>
+                        {
+                            const mealBox = document.createElement('div');
+                            mealBox.className = 'meal-box min-w-[320px] max-w-[320px] mt-1 block w-full border rounded-md p-2 hover:cursor-pointer hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
+                            mealBox.innerHTML = `
+                                <p>${String(meal).replace(/\n/g, '<br>')}</p>
+                            `;
+                            resultsContainer.appendChild(mealBox);
+                        });
+                    })
+                    .catch(error =>
+                    {
+                        console.error('Error fetching search results:', error);
+                    });
+            }
+        });
+
+        // Store meals that I select so I can take them to the next screen
+        const selectedMeals = [];
+        document.getElementById('search-results').addEventListener('click', (event) =>
+        {
+            const mealBox = event.target.closest('.meal-box');
+            if (mealBox)
+            {
+                const mealText = mealBox.querySelector('p').innerText;
+                if (!selectedMeals.includes(mealText))
+                {
+                    selectedMeals.push(mealText);
+                    mealBox.classList.add('bg-green-100', 'ring-emerald-400', 'ring-2', 'rounded');
+                    console.log('added meal:', mealText);
+                }
+                else
+                {
+                    selectedMeals.splice(selectedMeals.indexOf(mealText), 1);
+                    mealBox.classList.remove('bg-green-100', 'ring-emerald-400', 'ring-2', 'rounded');
+                }
+            }
+        });
+
+        // Save selectedMeals to localStorage
+        function saveSelectedMeals()
+        {
+            localStorage.setItem('selectedMeals', JSON.stringify(selectedMeals));
+        }
+    </script>
+</body>
+
+</html>

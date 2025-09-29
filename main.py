@@ -108,7 +108,7 @@ def backwards_index(request: Request):
     # Reverse to show oldest first
     days.reverse()
 
-    # Define template configuration: show_days_until_payday, show_days_eating_out
+    # Define template configuration
     template_config = {
         "title": "Past Meals",
         "show_days_until_payday": False,
@@ -264,6 +264,40 @@ def get_next_payday():
         "days_until_next_payday": days_until,
         "next_payday_date": next_payday.strftime("%Y-%m-%d"),
     }
+
+
+@app.get("/api/search", response_class=JSONResponse)
+def get_search_meal(
+    query: str,
+    favorites_only: Optional[bool] = False,
+    include_takeout: Optional[bool] = False,
+):
+    db = SessionLocal()
+    query_obj = db.query(Meal).filter(Meal.description.ilike(f"%{query}%"))
+    if str(favorites_only).lower() in ("on", "true", "1"):
+        query_obj = query_obj.filter(Meal.is_favorite == True)
+    if str(include_takeout).lower() in ("on", "true", "1"):
+        query_obj = query_obj.filter(Meal.is_takeout == True)
+    results = query_obj.all()
+    db.close()
+    return {"results": [r.description for r in results]}
+
+
+@app.get("/search", response_class=HTMLResponse)
+def get_search(request: Request):
+
+    # Define template configuration
+    template_config = {
+        "title": "Search",
+        "show_days_until_payday": False,
+        "show_days_eating_out": False,
+        "days_are_stale": False,
+    }
+
+    return templates.TemplateResponse(
+        "search.html",
+        {"request": request, "template_config": template_config},
+    )
 
 
 @app.get("/api/how-many-times", response_class=JSONResponse)
