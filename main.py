@@ -3,6 +3,7 @@
 import os
 import random
 import re
+import json
 from datetime import date, datetime, timedelta
 from typing import Annotated, Dict, Any, List, Optional
 
@@ -72,11 +73,11 @@ def read_index(request: Request):
 
         days.append(meal_day)
 
-    # Define template configuration: show_days_until_payday, show_days_eating_out
+    # Define template configuration: show_days_until_payday, show_meal_metrics
     template_config = {
         "title": "Home",
         "show_days_until_payday": True,
-        "show_days_eating_out": True,
+        "show_meal_metrics": True,
         "days_are_stale": False,
     }
 
@@ -112,7 +113,7 @@ def backwards_index(request: Request):
     template_config = {
         "title": "Past Meals",
         "show_days_until_payday": False,
-        "show_days_eating_out": False,
+        "show_meal_metrics": False,
         "days_are_stale": True,
     }
 
@@ -238,6 +239,58 @@ def get_favorites():
     return [{"meal_text": m[0]} for m in favorites if m[0]]
 
 
+@app.get("/api/veggies", response_class=JSONResponse)
+def get_veggies_eaten():
+    today = datetime.today().date()
+
+    veggies = None
+    with open("./static/veggies.json", "r") as f:
+        veggies = json.load(f)
+
+    db = SessionLocal()
+    # This month
+    first_of_month = today.replace(day=1)
+    meals_this_month = (
+        db.query(Meal.description)
+        .join(MealDay)
+        .filter(MealDay.date >= first_of_month)
+        .all()
+    )
+    meal_texts_this_month = [m[0].lower() for m in meals_this_month if m[0]]
+    veggie_count_this_month = sum(
+        1 for text in meal_texts_this_month if any(veggie in text for veggie in veggies)
+    )
+
+    # Last month
+    if first_of_month.month == 1:
+        last_month = first_of_month.replace(year=first_of_month.year - 1, month=12)
+    else:
+        last_month = first_of_month.replace(month=first_of_month.month - 1)
+    first_of_last_month = last_month
+    # Get last day of last month
+    if first_of_month.month == 1:
+        last_day_of_last_month = first_of_month - timedelta(days=1)
+    else:
+        last_day_of_last_month = first_of_month - timedelta(days=1)
+    meals_last_month = (
+        db.query(Meal.description)
+        .join(MealDay)
+        .filter(MealDay.date >= first_of_last_month)
+        .filter(MealDay.date <= last_day_of_last_month)
+        .all()
+    )
+    db.close()
+    meal_texts_last_month = [m[0].lower() for m in meals_last_month if m[0]]
+    veggie_count_last_month = sum(
+        1 for text in meal_texts_last_month if any(veggie in text for veggie in veggies)
+    )
+
+    return {
+        "veggies_eaten_this_month": veggie_count_this_month,
+        "veggies_eaten_last_month": veggie_count_last_month,
+    }
+
+
 @app.get("/api/next-payday", response_class=JSONResponse)
 def get_next_payday():
     today = datetime.today().date()
@@ -290,7 +343,7 @@ def get_search(request: Request):
     template_config = {
         "title": "Search",
         "show_days_until_payday": False,
-        "show_days_eating_out": False,
+        "show_meal_metrics": False,
         "days_are_stale": False,
     }
 
