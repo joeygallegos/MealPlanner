@@ -59,7 +59,6 @@ host = os.getenv("DB_HOST", "")
 port = os.getenv("DB_PORT", "")
 database = os.getenv("DB_NAME", "")
 DATABASE_URL = f"mysql+pymysql://{username}:{password}@{host}:{port}/{database}"
-print("DATABASE_URL:", DATABASE_URL)
 
 engine = create_engine(
     DATABASE_URL,

@@ -7,7 +7,7 @@ import json
 from datetime import date, datetime, timedelta
 from typing import Annotated, Dict, Any, List, Optional
 
-from fastapi import FastAPI, Request, Depends, HTTPException, Body
+from fastapi import FastAPI, Request, Depends, HTTPException, Body, Query
 from fastapi.datastructures import FormData
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -51,6 +51,7 @@ def read_index(request: Request):
     today = date.today()
     days = []
 
+    # Ensure we have MealDay and Meal entries for the next N days
     for i in range(DAYS):
         current_date = today + timedelta(days=i)
         meal_day = (
@@ -60,12 +61,13 @@ def read_index(request: Request):
             .first()
         )
 
+        # If not found, create meal day with meal rows with null descriptions
         if not meal_day:
             meal_day = MealDay(date=current_date)
             meal_day.meals = [
-                Meal(type=MealType.breakfast, description=""),
-                Meal(type=MealType.lunch, description=""),
-                Meal(type=MealType.dinner, description=""),
+                Meal(type=MealType.breakfast),
+                Meal(type=MealType.lunch),
+                Meal(type=MealType.dinner),
             ]
             db.add(meal_day)
             db.commit()
@@ -123,16 +125,8 @@ def backwards_index(request: Request):
     )
 
 
-def _assign_nested_key(d, keys, value):
-    """Assign value into a nested dictionary given a list of keys."""
-    for key in keys[:-1]:
-        d = d.setdefault(key, {})
-    d[keys[-1]] = value
-
-
+# --------- API VIEWS --------------------------
 def _update_days_from_payload(days: list[dict], db):
-    # Print payload
-    print("Payload days:", days)
     for day in days:
         meal_day = db.query(MealDay).filter(MealDay.id == day["id"]).first()
         if not meal_day:
@@ -149,7 +143,11 @@ def _update_days_from_payload(days: list[dict], db):
                 continue
 
             # Update description
-            meal.description = day.get(meal_type, "")
+            desc = day.get(meal_type, "")
+            if isinstance(desc, str) and desc.strip().lower() not in ("none", ""):
+                meal.description = desc.strip()
+            else:
+                meal.description = None
 
             # Get nested fields from "meals" block in payload
             meal_fields = day.get("meals", {}).get(meal_type, {})
@@ -161,11 +159,7 @@ def _update_days_from_payload(days: list[dict], db):
                     f"Current {meal_type} for day {meal_day.date}: is_takeout={meal.is_takeout} -> New: {meal_fields.get('is_takeout', 'off')}"
                 )
                 # Make change
-                meal.is_takeout = str(meal_fields.get("is_takeout", "off")).lower() in (
-                    "on",
-                    "true",
-                    "1",
-                )
+                meal.is_takeout = is_truthy(meal_fields.get("is_takeout", "off"))
 
             # Update cooking_user and is_favorite correctly if present
             if meal.cooking_user is not None or "cooking_user" in meal_fields:
@@ -186,17 +180,19 @@ def _update_days_from_payload(days: list[dict], db):
                     f"Current {meal_type} for day {meal_day.date}: is_favorite={meal.is_favorite} -> New: {meal_fields.get('is_favorite', 'off')}"
                 )
                 # Make change
-                meal.is_favorite = str(
-                    meal_fields.get("is_favorite", "off")
-                ).lower() in (
-                    "on",
-                    "true",
-                    "1",
-                )
+                meal.is_favorite = is_truthy(meal_fields.get("is_favorite", "off"))
             else:
                 print(
                     f"SKIPPING is_favorite update for {meal_type} on day {meal_day.date} as it's not in payload"
                 )
+
+
+def is_truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in ("on", "true", "1")
+    return False
 
 
 @app.post("/api/save", response_class=JSONResponse)
@@ -225,18 +221,23 @@ def api_save(payload: Dict[str, Any] = Body(...)):
 
 
 @app.get("/api/favorites")
-def get_favorites():
+def get_favorites(limit: int = 200):
     db = SessionLocal()
-    favorites = (
-        db.query(Meal.meal_text)
-        .join(MealDay)
-        .filter(MealDay.is_favorite == True)
-        .distinct()
-        .order_by(Meal.meal_text)
-        .all()
-    )
-    db.close()
-    return [{"meal_text": m[0]} for m in favorites if m[0]]
+    safe_limit = max(1, min(limit, 500))
+    try:
+        favorites = (
+            db.query(Meal.description)
+            .filter(Meal.is_favorite == True)
+            .filter(Meal.description.isnot(None))
+            .filter(Meal.description != "")
+            .distinct()
+            .order_by(Meal.description.asc())
+            .limit(safe_limit)
+            .all()
+        )
+        return [{"meal_text": m[0]} for m in favorites if m[0]]
+    finally:
+        db.close()
 
 
 @app.get("/api/veggies", response_class=JSONResponse)
@@ -321,19 +322,46 @@ def get_next_payday():
 
 @app.get("/api/search", response_class=JSONResponse)
 def get_search_meal(
-    query: str,
+    query: str = "",
     favorites_only: Optional[bool] = False,
+    only_favorites: Optional[bool] = Query(default=None),
     include_takeout: Optional[bool] = False,
+    limit: int = 60,
 ):
+    term = (query or "").strip()
+    if not term:
+        return {"results": []}
+
     db = SessionLocal()
-    query_obj = db.query(Meal).filter(Meal.description.ilike(f"%{query}%"))
-    if str(favorites_only).lower() in ("on", "true", "1"):
-        query_obj = query_obj.filter(Meal.is_favorite == True)
-    if str(include_takeout).lower() in ("on", "true", "1"):
-        query_obj = query_obj.filter(Meal.is_takeout == True)
-    results = query_obj.all()
-    db.close()
-    return {"results": [r.description for r in results]}
+    safe_limit = max(1, min(limit, 200))
+    use_favorites_filter = is_truthy(favorites_only) or is_truthy(only_favorites)
+
+    try:
+        query_obj = (
+            db.query(Meal.description)
+            .filter(Meal.description.isnot(None))
+            .filter(Meal.description != "")
+            .filter(Meal.description.ilike(f"%{term}%"))
+        )
+        if use_favorites_filter:
+            query_obj = query_obj.filter(Meal.is_favorite == True)
+        if not is_truthy(include_takeout):
+            query_obj = query_obj.filter(Meal.is_takeout == False)
+
+        rows = query_obj.order_by(Meal.id.desc()).limit(safe_limit).all()
+
+        seen = set()
+        deduped = []
+        for (text,) in rows:
+            normalized = text.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            deduped.append(text.strip())
+
+        return {"results": deduped}
+    finally:
+        db.close()
 
 
 @app.get("/search", response_class=HTMLResponse)

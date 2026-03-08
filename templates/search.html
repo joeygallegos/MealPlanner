@@ -8,9 +8,20 @@
     <title>Meal Planner</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        .mp-btn {
+            border-radius: 0.625rem;
+            font-weight: 600;
+            transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+        }
+
+        .mp-btn:focus-visible {
+            outline: none;
+        }
+    </style>
 </head>
 
-<body class="bg-white-100">
+<body class="bg-slate-50 text-slate-900">
     <div class="w-full px-8 py-12" x-data>
         <!-- Header -->
         <header class="mb-6">
@@ -31,16 +42,16 @@
                 </div>
 
                 <nav class="flex items-center gap-2">
-                    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-blue-300 text-white hover:bg-blue-600 shadow-sm transition">
+                    <a href="/" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
                         Home
                     </a>
-                    <a href="/backwards" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-purple-300 text-white hover:bg-purple-600 shadow-sm transition">
+                    <a href="/backwards" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-indigo-700 text-white hover:bg-indigo-600 shadow-sm">
                         Backwards
                     </a>
-                    <a href="/search" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-green-300 text-white hover:bg-green-600 shadow-sm transition">
+                    <a href="/search" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
                         Search
                     </a>
                 </nav>
@@ -50,12 +61,12 @@
 
 
         <!-- Search form -->
-        {# Query /api/search using ajax #}
-        <form action="/api/search" method="get" class="mt-6 flex items-center gap-3">
+        <form action="/api/search" method="get" class="mt-6 flex flex-wrap items-center gap-3" id="meal-search-form">
             <input type="text" name="query" placeholder="Search meals..."
-                class="border border-gray-300 rounded-md px-4 py-2" />
-            <button type="submit" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-blue-500 text-white hover:bg-blue-600 shadow-sm transition">
+                class="border border-slate-300 bg-white rounded-md px-4 py-2 min-w-[260px] text-slate-900 placeholder:text-slate-400"
+                autocomplete="off" />
+            <button type="submit" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
                 Search
             </button>
             <label class="inline-flex items-center gap-2">
@@ -68,8 +79,17 @@
             </label>
         </form>
 
-        <div id="search-results" class="mt-6 flex flex-col gap-4">
-            <!-- Search results will be populated here -->
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button id="save-selected-btn" type="button"
+                class="mp-btn inline-flex items-center px-4 py-2 text-sm bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
+                Copy Selected To Saved Meals
+            </button>
+            <span id="selected-count" class="text-sm text-gray-600">0 selected</span>
+            <span id="saved-count" class="text-sm text-gray-500">0 saved meals</span>
+        </div>
+
+        <div id="search-results" class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="text-sm text-gray-500">Type to search meals.</div>
         </div>
 
         <div class="mt-6 flex items-center gap-3">
@@ -82,73 +102,218 @@
         aria-live="polite"></div>
 
     <script>
-        // As I type, search for meals using the form's action URL and do not refresh the page
-        const searchForm = document.querySelector('form[action="/api/search"]');
+        const SAVED_MEALS_STORAGE_KEY = 'mealplanner.savedMeals.v1';
+        const searchForm = document.getElementById('meal-search-form');
         const searchInput = searchForm.querySelector('input[name="query"]');
+        const includeTakeoutInput = searchForm.querySelector('input[name="include_takeout"]');
+        const onlyFavoritesInput = searchForm.querySelector('input[name="only_favorites"]');
+        const resultsContainer = document.getElementById('search-results');
+        const selectedCountEl = document.getElementById('selected-count');
+        const savedCountEl = document.getElementById('saved-count');
+        const saveSelectedBtn = document.getElementById('save-selected-btn');
+        const selectedMeals = new Set();
 
-        searchInput.addEventListener('input', () =>
+        function showToast(message, { type = 'ok', timeout = 1800 } = {})
+        {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.className = "fixed bottom-4 right-4 z-50 px-4 py-3 rounded shadow-lg text-white";
+            if (type === 'error') el.classList.add('bg-red-600');
+            else el.classList.add('bg-green-600');
+            el.classList.remove('hidden');
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.add('hidden'), timeout);
+        }
+
+        function escapeHtml(text)
+        {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function escapeAttr(text)
+        {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function loadSavedMeals()
+        {
+            try
+            {
+                const raw = localStorage.getItem(SAVED_MEALS_STORAGE_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string' && x.trim()) : [];
+            } catch
+            {
+                return [];
+            }
+        }
+
+        function saveSavedMeals(items)
+        {
+            localStorage.setItem(SAVED_MEALS_STORAGE_KEY, JSON.stringify(items));
+        }
+
+        function updateSavedCount()
+        {
+            savedCountEl.textContent = `${loadSavedMeals().length} saved meals`;
+        }
+
+        function updateSelectedCount()
+        {
+            selectedCountEl.textContent = `${selectedMeals.size} selected`;
+        }
+
+        function addMealsToSaved(meals)
+        {
+            const existing = loadSavedMeals();
+            const existingSet = new Set(existing.map(m => m.trim().toLowerCase()));
+            let added = 0;
+
+            for (const meal of meals)
+            {
+                const text = String(meal || '').trim();
+                if (!text) continue;
+                const key = text.toLowerCase();
+                if (existingSet.has(key)) continue;
+                existing.push(text);
+                existingSet.add(key);
+                added++;
+            }
+
+            saveSavedMeals(existing);
+            updateSavedCount();
+            return added;
+        }
+
+        function renderResults(results)
+        {
+            if (!results.length)
+            {
+                resultsContainer.innerHTML = '<div class="text-sm text-gray-500">No meals matched.</div>';
+                return;
+            }
+
+            resultsContainer.innerHTML = results.map(meal =>
+            {
+                const selected = selectedMeals.has(meal);
+                return `
+                <article class="meal-box border border-slate-200 bg-white rounded-md p-3 cursor-pointer hover:bg-emerald-50 ${selected ? 'bg-emerald-100 ring-2 ring-emerald-500' : ''}" data-meal-text="${escapeAttr(meal)}">
+                    <div class="text-sm whitespace-pre-wrap break-words">${escapeHtml(meal)}</div>
+                    <div class="mt-3 flex items-center gap-2">
+                        <button type="button" class="mp-btn text-xs px-2 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100" data-select-meal>${selected ? 'Unselect' : 'Select'}</button>
+                        <button type="button" class="mp-btn text-xs px-2 py-1 border border-emerald-300 bg-white text-emerald-900 hover:bg-emerald-50" data-save-one>Copy to Saved meals</button>
+                    </div>
+                </article>`;
+            }).join('');
+        }
+
+        let searchRequestId = 0;
+        async function runSearch()
         {
             const query = searchInput.value.trim();
-            const includeTakeout = searchForm.querySelector('input[name="include_takeout"]').checked;
-            const onlyFavorites = searchForm.querySelector('input[name="only_favorites"]').checked;
-
-            if (query)
+            if (!query)
             {
-                fetch(`/api/search?query=${encodeURIComponent(query)}&include_takeout=${includeTakeout}&only_favorites=${onlyFavorites}`)
-                    .then(response => response.json())
-                    .then(data =>
-                    {
-                        // Handle search results
-                        console.log('Search results:', data);
-
-                        // Fill the UI with meal boxes
-                        const resultsContainer = document.getElementById('search-results');
-                        resultsContainer.innerHTML = '';
-
-                        data.results.forEach(meal =>
-                        {
-                            const mealBox = document.createElement('div');
-                            mealBox.className = 'meal-box min-w-[320px] max-w-[320px] mt-1 block w-full border rounded-md p-2 hover:cursor-pointer hover:bg-green-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500';
-                            mealBox.innerHTML = `
-                                <p>${String(meal).replace(/\n/g, '<br>')}</p>
-                            `;
-                            resultsContainer.appendChild(mealBox);
-                        });
-                    })
-                    .catch(error =>
-                    {
-                        console.error('Error fetching search results:', error);
-                    });
+                resultsContainer.innerHTML = '<div class="text-sm text-gray-500">Type to search meals.</div>';
+                return;
             }
-        });
 
-        // Store meals that I select so I can take them to the next screen
-        const selectedMeals = [];
-        document.getElementById('search-results').addEventListener('click', (event) =>
-        {
-            const mealBox = event.target.closest('.meal-box');
-            if (mealBox)
+            const requestId = ++searchRequestId;
+            const includeTakeout = includeTakeoutInput.checked;
+            const onlyFavorites = onlyFavoritesInput.checked;
+
+            try
             {
-                const mealText = mealBox.querySelector('p').innerText;
-                if (!selectedMeals.includes(mealText))
-                {
-                    selectedMeals.push(mealText);
-                    mealBox.classList.add('bg-green-100', 'ring-emerald-400', 'ring-2', 'rounded');
-                    console.log('added meal:', mealText);
-                }
-                else
-                {
-                    selectedMeals.splice(selectedMeals.indexOf(mealText), 1);
-                    mealBox.classList.remove('bg-green-100', 'ring-emerald-400', 'ring-2', 'rounded');
-                }
+                const url = `/api/search?query=${encodeURIComponent(query)}&include_takeout=${includeTakeout}&only_favorites=${onlyFavorites}`;
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Search failed');
+                const data = await response.json();
+                if (requestId !== searchRequestId) return;
+                const results = Array.isArray(data.results) ? data.results.map(x => String(x || '').trim()).filter(Boolean) : [];
+                renderResults(results);
+            } catch
+            {
+                if (requestId !== searchRequestId) return;
+                resultsContainer.innerHTML = '<div class="text-sm text-red-600">Search failed. Try again.</div>';
             }
-        });
-
-        // Save selectedMeals to localStorage
-        function saveSelectedMeals()
-        {
-            localStorage.setItem('selectedMeals', JSON.stringify(selectedMeals));
         }
+
+        function debounce(fn, wait = 260)
+        {
+            let t = null;
+            return (...args) =>
+            {
+                clearTimeout(t);
+                t = setTimeout(() => fn(...args), wait);
+            };
+        }
+
+        const debouncedSearch = debounce(runSearch, 260);
+
+        searchForm.addEventListener('submit', (e) =>
+        {
+            e.preventDefault();
+            runSearch();
+        });
+        searchInput.addEventListener('input', debouncedSearch);
+        includeTakeoutInput.addEventListener('change', runSearch);
+        onlyFavoritesInput.addEventListener('change', runSearch);
+
+        resultsContainer.addEventListener('click', (event) =>
+        {
+            const box = event.target.closest('.meal-box');
+            if (!box) return;
+            const mealText = box.dataset.mealText || '';
+            if (!mealText) return;
+
+            if (event.target.closest('[data-save-one]'))
+            {
+                const added = addMealsToSaved([mealText]);
+                showToast(added ? 'Copied to Saved meals' : 'Meal already saved', { type: added ? 'ok' : 'error' });
+                return;
+            }
+
+            if (selectedMeals.has(mealText)) selectedMeals.delete(mealText);
+            else selectedMeals.add(mealText);
+
+            updateSelectedCount();
+            const selected = selectedMeals.has(mealText);
+            box.classList.toggle('bg-emerald-100', selected);
+            box.classList.toggle('ring-2', selected);
+            box.classList.toggle('ring-emerald-500', selected);
+            const selectBtn = box.querySelector('[data-select-meal]');
+            if (selectBtn) selectBtn.textContent = selected ? 'Unselect' : 'Select';
+        });
+
+        saveSelectedBtn.addEventListener('click', () =>
+        {
+            const added = addMealsToSaved(Array.from(selectedMeals));
+            if (!selectedMeals.size)
+            {
+                showToast('No selected meals to copy', { type: 'error' });
+                return;
+            }
+
+            showToast(added ? `Copied ${added} meal(s) to Saved meals` : 'All selected meals were already saved', { type: added ? 'ok' : 'error' });
+            if (selectedMeals.size)
+            {
+                selectedMeals.clear();
+                updateSelectedCount();
+                resultsContainer.querySelectorAll('.meal-box').forEach(box =>
+                {
+                    box.classList.remove('bg-emerald-100', 'ring-2', 'ring-emerald-500');
+                    const selectBtn = box.querySelector('[data-select-meal]');
+                    if (selectBtn) selectBtn.textContent = 'Select';
+                });
+            }
+        });
+
+        updateSelectedCount();
+        updateSavedCount();
+        searchInput.focus();
     </script>
 </body>
 

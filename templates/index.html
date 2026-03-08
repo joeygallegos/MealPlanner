@@ -262,7 +262,6 @@
         // -------- Veggie counter ----------
         function updateVeggieUI(curr, last)
         {
-            // numbers
             setText("veggie-current-counter", curr);
             setText("veggie-last-counter", last);
 
@@ -503,6 +502,7 @@
             });
         };
 
+            if (!listEl) return;
         // -------- Swap logic ----------
         window._swapState = null;
 
