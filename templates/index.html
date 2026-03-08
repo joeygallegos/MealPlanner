@@ -8,10 +8,28 @@
     <title>Meal Planner</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] {
+            display: none !important
+        }
+
+        .mp-btn {
+            border-radius: 0.625rem;
+            font-weight: 600;
+            transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+        }
+
+        .mp-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.18);
+        }
+    </style>
 </head>
 
-<body class="bg-white-100">
-    <div class="w-full px-8 py-12" x-data>
+<body class="bg-slate-50 text-slate-900">
+    <!-- CHANGED: provide drawer state + esc to close -->
+    <div class="w-full px-8 py-12" x-data="{ drawer:false }" @keydown.window.escape="drawer=false"
+        @mp-close-tray.window="drawer=false">
         <!-- Header -->
         <header class="mb-6">
             {% set cfg = template_config %}
@@ -31,18 +49,30 @@
                 </div>
 
                 <nav class="flex items-center gap-2">
-                    <a href="/" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-blue-300 text-white hover:bg-blue-600 shadow-sm transition">
+                    <a href="/" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
                         Home
                     </a>
-                    <a href="/backwards" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-purple-300 text-white hover:bg-purple-600 shadow-sm transition">
+                    <a href="/backwards" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-indigo-700 text-white hover:bg-indigo-600 shadow-sm">
                         Backwards
                     </a>
-                    <a href="/search" class="inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold
-                bg-green-300 text-white hover:bg-green-600 shadow-sm transition">
+                    <a href="/search" class="mp-btn inline-flex items-center px-4 py-2 text-sm
+                bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
                         Search
                     </a>
+
+                    <!-- Hamburger to toggle drawer -->
+                    <button type="button" @click="drawer = true"
+                        class="mp-btn ml-2 inline-flex items-center justify-center w-10 h-10 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        aria-controls="quick-tray" :aria-expanded="drawer ? 'true' : 'false'"
+                        aria-label="Open quick tray">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M10 18h10" />
+                        </svg>
+                    </button>
                 </nav>
             </div>
 
@@ -62,7 +92,7 @@
                 </div>
 
                 <!-- Veg servings (this month) -->
-                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div id="veggie-card" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
                     <div class="flex items-center justify-between">
                         <div class="text-sm font-medium text-emerald-800">Veg servings (this month)</div>
                         <span id="veggie-delta"
@@ -98,8 +128,6 @@
 
         </header>
 
-
-
         {# =========================
         Macro: single meal block
         ========================= #}
@@ -122,29 +150,33 @@
       }
     }">
             <div class="flex items-center justify-between">
-                <label class="block text-sm font-medium text-gray-700">
+                <label class="block text-sm font-medium text-gray-700" title="days[{{ day.id }}]">
                     {{ label }}
                     <span x-show="takeout" class="text-orange-700 font-semibold"> TAKEOUT! </span>
                 </label>
 
                 <div class="flex items-center gap-2">
-                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                        :class="{ 'bg-orange-100 text-orange-800': takeout, 'hover:bg-gray-50': !takeout }"
+                    <button type="button" class="mp-btn text-xs px-2 py-1 border border-slate-300 text-slate-700"
+                        :class="{ 'bg-amber-600 text-white border-amber-600': takeout, 'bg-white hover:bg-slate-100': !takeout }"
                         @click="toggleTakeout($el)">Takeout</button>
 
-                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300"
-                        :class="{ 'bg-pink-100 text-pink-800': fav, 'hover:bg-gray-50': !fav }"
+                    <button type="button" class="mp-btn text-xs px-2 py-1 border border-slate-300 text-slate-700"
+                        :class="{ 'bg-rose-600 text-white border-rose-600': fav, 'bg-white hover:bg-slate-100': !fav }"
                         @click="toggleFav($el)">Favorite</button>
 
-                    <button type="button" class="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                    <button type="button" class="mp-btn text-xs px-2 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
                         @click="window.armSwap($el.closest('.meal-day-card'), '{{ field }}', $el.closest('[data-meal-block]'))"
                         :title="`Swap ${field} with another day`">⇄ Swap</button>
+
+                    <button type="button" class="mp-btn text-xs px-2 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                        @click="window.queueMealFromBlock($el.closest('[data-meal-block]'))"
+                        :title="`Queue ${field} for later`">Queue</button>
                 </div>
             </div>
 
             <textarea name="days[{{ i }}][{{ field }}]" rows="5"
                 class="meal-input mt-1 block w-full border rounded-md p-2" :class="{ 'bg-orange-100': takeout }"
-                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ meal.description if meal else '' }}</textarea>
+                @input.debounce.600ms="window.autoSaveCard($el.closest('.meal-day-card'), $el)">{{ (meal.description or '') if meal else '' }}</textarea>
 
             <div class="save-status text-xs mt-1 text-gray-400" data-field="{{ field }}"></div>
         </div>
@@ -225,6 +257,49 @@
                     days.</span>
             </div>
         </form>
+
+        <!-- NEW: Slide-over / Fly-out INSIDE the same x-data scope -->
+        <!-- Backdrop -->
+        <div x-cloak x-show="drawer" x-transition.opacity @click="drawer=false" class="fixed inset-0 z-40 bg-black/30"
+            aria-hidden="true"></div>
+
+        <!-- Panel -->
+        <aside id="quick-tray" x-cloak x-show="drawer" x-transition:enter="transform transition ease-out duration-200"
+            x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0"
+            x-transition:leave="transform transition ease-in duration-150" x-transition:leave-start="translate-x-0"
+            x-transition:leave-end="translate-x-full"
+            class="fixed inset-y-0 right-0 z-50 w-96 max-w-[90vw] bg-white border-l shadow-xl flex flex-col">
+            <div class="flex items-center justify-between px-4 py-3 border-b">
+                <h3 class="text-lg font-semibold">Quick Tray</h3>
+                <button type="button" @click="drawer=false" class="mp-btn p-1 bg-white text-slate-700 hover:bg-slate-100"
+                    aria-label="Close tray">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" viewBox="0 0 20 20"
+                        fill="currentColor">
+                        <path fill-rule="evenodd"
+                            d="M10 8.586l4.95-4.95 1.414 1.414L11.414 10l4.95 4.95-1.414 1.414L10 11.414l-4.95 4.95-1.414-1.414L8.586 10l-4.95-4.95L5.05 3.636 10 8.586z"
+                            clip-rule="evenodd" />
+                    </svg>
+                </button>
+            </div>
+            <div class="p-4 overflow-y-auto grow">
+                <p class="text-sm text-gray-600 mb-4">Drag meals into empty slots, or queue meal text for later.</p>
+
+                <div class="rounded-xl border border-indigo-200 bg-indigo-50 p-3 mb-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <div class="text-sm font-semibold text-indigo-900">Queued for Later</div>
+                        <button type="button" id="queue-clear-btn"
+                            class="mp-btn text-xs px-2 py-1 border border-indigo-300 bg-white text-indigo-900 hover:bg-indigo-100">Clear</button>
+                    </div>
+                    <div id="queued-meals" class="grid grid-cols-1 gap-2"></div>
+                    <div id="queued-empty" class="text-xs text-indigo-800/80 mt-2">No queued meals yet.</div>
+                </div>
+
+                <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Saved meals</div>
+                <div id="drawer-meals" class="grid grid-cols-1 gap-3">
+                </div>
+                <div id="saved-empty" class="text-xs text-gray-500 mt-2">No saved meals yet. Add some from Search.</div>
+            </div>
+        </aside>
     </div>
 
     <!-- Toast -->
@@ -265,14 +340,12 @@
             setText("veggie-current-counter", curr);
             setText("veggie-last-counter", last);
 
-            // goal + progress
             const card = $("veggie-card");
             const goalTotal = Number(card?.dataset.goal || $("veggie-goal-total")?.textContent || 30);
             const pct = goalTotal > 0 ? Math.round((Number(curr) / goalTotal) * 100) : 0;
             setWidthPct("veggie-progress", pct);
             setText("veggie-goal-label", curr);
 
-            // delta chip
             const delta = Number(curr) - Number(last);
             const deltaEl = $("veggie-delta");
             if (!deltaEl) return;
@@ -281,7 +354,6 @@
             if (delta > 0) text = `+${delta} vs last`;
             if (delta < 0) text = `${delta} vs last`;
 
-            // base classes
             let cls = "px-2 py-0.5 rounded-full text-xs font-semibold ";
             if (delta > 0) cls += "bg-emerald-200 text-emerald-900";
             else if (delta < 0) cls += "bg-rose-200 text-rose-900";
@@ -326,7 +398,8 @@
             el._t = setTimeout(() => el.classList.add('hidden'), timeout);
         }
 
-        // -------- Utilities ----------
+        // (rest of your swap/save utilities unchanged) ...
+
         function nowHHMMSS()
         {
             const d = new Date();
@@ -347,20 +420,13 @@
                     const data = Alpine.$data(blockEl);
                     if (data && ("fav" in data || "takeout" in data))
                     {
-                        return {
-                            is_favorite: Boolean(data.fav),
-                            is_takeout: Boolean(data.takeout)
-                        };
+                        return { is_favorite: Boolean(data.fav), is_takeout: Boolean(data.takeout) };
                     }
                 }
-            } catch { /* ignore and use fallbacks */ }
-            // Fallbacks via data-* attributes (optional: set elsewhere)
+            } catch { }
             const favAttr = blockEl?.dataset?.fav;
             const takeoutAttr = blockEl?.dataset?.takeout;
-            return {
-                is_favorite: favAttr === 'true',
-                is_takeout: takeoutAttr === 'true'
-            };
+            return { is_favorite: favAttr === 'true', is_takeout: takeoutAttr === 'true' };
         }
 
         /**
@@ -370,25 +436,19 @@
          */
         function setMealFlags(blockEl, { is_favorite, is_takeout })
         {
-            // Persist as data-* so non-Alpine code can read it if needed.
-            if (blockEl && blockEl.dataset)
+            if (blockEl?.dataset)
             {
                 blockEl.dataset.fav = String(!!is_favorite);
                 blockEl.dataset.takeout = String(!!is_takeout);
             }
-            // Update Alpine reactive state if mounted.
             try
             {
                 if (window.Alpine && blockEl)
                 {
                     const data = Alpine.$data(blockEl);
-                    if (data)
-                    {
-                        data.fav = !!is_favorite;
-                        data.takeout = !!is_takeout;
-                    }
+                    if (data) { data.fav = !!is_favorite; data.takeout = !!is_takeout; }
                 }
-            } catch { /* ignore; Alpine might not be ready */ }
+            } catch { }
         }
 
         /**
@@ -502,7 +562,203 @@
             });
         };
 
+        const SAVED_MEALS_STORAGE_KEY = 'mealplanner.savedMeals.v1';
+        const QUEUE_STORAGE_KEY = 'mealplanner.queue.v1';
+
+        function savedMealsLoad()
+        {
+            try
+            {
+                const raw = localStorage.getItem(SAVED_MEALS_STORAGE_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string' && x.trim()) : [];
+            } catch
+            {
+                return [];
+            }
+        }
+
+        function savedMealsSave(items)
+        {
+            localStorage.setItem(SAVED_MEALS_STORAGE_KEY, JSON.stringify(items));
+        }
+
+        function savedMealsRender()
+        {
+            const listEl = document.getElementById('drawer-meals');
+            const emptyEl = document.getElementById('saved-empty');
             if (!listEl) return;
+
+            const items = savedMealsLoad();
+            listEl.innerHTML = items.map((text, idx) => `
+                <div class="rounded-xl border p-3 flex items-start gap-2" data-meal-text="${escapeAttr(text)}">
+                    <div class="grow min-w-0">
+                        <div class="text-xs text-gray-500 mb-1">Saved meal</div>
+                        <div class="font-medium break-words">${escapeHtml(text)}</div>
+                    </div>
+                    <button type="button" data-saved-remove="${idx}" class="mp-btn shrink-0 text-xs px-2 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">X</button>
+                </div>
+            `).join('');
+
+            if (emptyEl) emptyEl.classList.toggle('hidden', items.length > 0);
+        }
+
+        function savedMealsRemoveAt(index)
+        {
+            const items = savedMealsLoad();
+            if (index < 0 || index >= items.length) return;
+            items.splice(index, 1);
+            savedMealsSave(items);
+            savedMealsRender();
+        }
+
+        function queueLoad()
+        {
+            try
+            {
+                const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+                if (!raw) return [];
+                const parsed = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed.filter(x => typeof x === 'string' && x.trim()) : [];
+            } catch
+            {
+                return [];
+            }
+        }
+
+        function queueSave(items)
+        {
+            localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(items));
+        }
+
+        function escapeHtml(text)
+        {
+            return String(text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;');
+        }
+
+        function escapeAttr(text)
+        {
+            return escapeHtml(text).replace(/"/g, '&quot;');
+        }
+
+        function queueRender()
+        {
+            const listEl = document.getElementById('queued-meals');
+            const emptyEl = document.getElementById('queued-empty');
+            if (!listEl) return;
+
+            const items = queueLoad();
+            listEl.innerHTML = items.map((text, idx) => `
+                <div class="rounded-lg border border-indigo-200 bg-white p-2 flex items-start gap-2" data-meal-text="${escapeAttr(text)}" data-queue-index="${idx}">
+                    <div class="grow min-w-0">
+                        <div class="text-[11px] text-indigo-700 mb-0.5">Queued meal</div>
+                        <div class="text-sm font-medium break-words">${escapeHtml(text)}</div>
+                    </div>
+                    <button type="button" data-queue-remove="${idx}" class="mp-btn shrink-0 text-xs px-2 py-1 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100">X</button>
+                </div>
+            `).join('');
+
+            if (emptyEl) emptyEl.classList.toggle('hidden', items.length > 0);
+        }
+
+        function queueAdd(text)
+        {
+            const cleaned = (text || '').trim();
+            if (!cleaned) return false;
+            const items = queueLoad();
+            items.unshift(cleaned);
+            queueSave(items);
+            queueRender();
+            return true;
+        }
+
+        function queueRemoveAt(index)
+        {
+            const items = queueLoad();
+            if (index < 0 || index >= items.length) return;
+            items.splice(index, 1);
+            queueSave(items);
+            queueRender();
+        }
+
+        function queueClearAll()
+        {
+            queueSave([]);
+            queueRender();
+        }
+
+        window.queueMealFromBlock = function (blockEl)
+        {
+            const input = blockEl?.querySelector('.meal-input');
+            if (!input)
+            {
+                showToast('Could not find meal text', { type: 'error', timeout: 1200 });
+                return;
+            }
+
+            const text = input.value.trim();
+            if (!text)
+            {
+                showToast('Nothing to queue', { type: 'error', timeout: 1200 });
+                return;
+            }
+
+            if (!queueAdd(text))
+            {
+                showToast('Failed to queue meal', { type: 'error', timeout: 1200 });
+                return;
+            }
+
+            const card = blockEl.closest('.meal-day-card');
+            input.value = "";
+            window.autoSaveCard?.(card, input);
+            showToast('Queued for later', { type: 'ok', timeout: 1200 });
+        };
+
+        document.addEventListener('click', (e) =>
+        {
+            const removeSavedBtn = e.target.closest('[data-saved-remove]');
+            if (removeSavedBtn)
+            {
+                e.preventDefault();
+                e.stopPropagation();
+                savedMealsRemoveAt(Number(removeSavedBtn.dataset.savedRemove));
+                return;
+            }
+
+            const removeBtn = e.target.closest('[data-queue-remove]');
+            if (removeBtn)
+            {
+                e.preventDefault();
+                e.stopPropagation();
+                queueRemoveAt(Number(removeBtn.dataset.queueRemove));
+                return;
+            }
+
+            if (e.target.id === 'queue-clear-btn')
+            {
+                e.preventDefault();
+                queueClearAll();
+            }
+        });
+
+        if (document.readyState === 'loading')
+        {
+            document.addEventListener('DOMContentLoaded', () =>
+            {
+                savedMealsRender();
+                queueRender();
+            }, { once: true });
+        } else
+        {
+            savedMealsRender();
+            queueRender();
+        }
+
         // -------- Swap logic ----------
         window._swapState = null;
 
@@ -656,6 +912,401 @@
                 showToast('Swap canceled', { type: 'error', timeout: 900 });
             }
         });
+    </script>
+    <script>
+        /**
+         * Meal Planner (MP) — Tray Drag/Drop Module
+         * - Works with iPad (touch) and desktop (mouse)
+         * - Uses your existing: .meal-input textareas, autoSaveCard(), showToast()
+         * - Tray items must have: [data-meal-text] (the full text to insert)
+         * - Minimal HTML churn: no new IDs required (uses #drawer-meals if present)
+         *
+         * Flow:
+         * 1) Tap/long-press a tray item → arm it (and for touch, start a drag ghost)
+         * 2) Eligibles (empty .meal-input) get ring highlight
+         * 3) Drop (or tap an eligible) inserts text + autosaves + Undo option
+         */
+
+        (function ()
+        {
+            // ---------- small CSS (shake) ----------
+            const style = document.createElement('style');
+            style.textContent = `
+    @keyframes mp-shake { 10%, 90% { transform: translateX(-1px) } 20%, 80% { transform: translateX(2px) }
+      30%, 50%, 70% { transform: translateX(-4px) } 40%, 60% { transform: translateX(4px) } }
+    .mp-shake { animation: mp-shake .35s; }
+    .mp-ghost { position: fixed; top:0; left:0; pointer-events:none; padding:.4rem .6rem; 
+      border-radius:.5rem; box-shadow:0 6px 18px rgba(0,0,0,.2); background:#fff; border:1px solid #e5e7eb; 
+      max-width: 50vw; font-size:.85rem; z-index: 9999; }
+  `;
+            document.head.appendChild(style);
+
+            // ---------- namespace ----------
+            window.MP = window.MP || {};
+            const MP = window.MP;
+
+            // ---------- helpers ----------
+            const $ = (sel, root = document) => root.querySelector(sel);
+            const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+            MP.ui = {
+                toast(msg, type = 'ok', ms = 3000)
+                {
+                    if (typeof window.showToast === 'function') { showToast(msg, { type, timeout: ms }); }
+                    else { console.log(`[toast:${type}]`, msg); }
+                },
+                toastUndo(msg, onUndo, ms = 8000)
+                {
+                    const el = $('#toast');
+                    if (!el) return this.toast(msg, 'ok', ms);
+                    el.innerHTML = `${msg} <button id="mp-undo" class="ml-2 underline">Undo</button>`;
+                    el.className = "fixed bottom-4 right-4 z-50 px-4 py-3 rounded shadow-lg text-white bg-green-600";
+                    el.classList.remove('hidden');
+                    const h = setTimeout(() => el.classList.add('hidden'), ms);
+                    $('#mp-undo')?.addEventListener('click', () =>
+                    {
+                        clearTimeout(h);
+                        el.classList.add('hidden');
+                        try { onUndo?.(); } catch (e) { console.error(e); }
+                    }, { once: true });
+                },
+                markSaved(statusEl)
+                {
+                    if (!statusEl) return;
+                    statusEl.textContent = `Saved ✓ at ${typeof nowHHMMSS === 'function' ? nowHHMMSS() : ''}`;
+                    statusEl.className = "save-status text-xs mt-1 text-emerald-600";
+                    setTimeout(() => (statusEl.textContent = ""), 1200);
+                },
+                markFailed(statusEl)
+                {
+                    if (!statusEl) return;
+                    statusEl.textContent = "Save failed ✗";
+                    statusEl.className = "save-status text-xs mt-1 text-red-600";
+                },
+                shake(el) { if (el) { el.classList.remove('mp-shake'); void el.offsetWidth; el.classList.add('mp-shake'); } }
+            };
+
+            MP.arm = (function ()
+            {
+                let text = null;
+                let armedTile = null;
+                return {
+                    isArmed: () => typeof text === 'string' && text.length > 0,
+                    get: () => text,
+                    getTile: () => armedTile,
+                    set(t, tileEl = null)
+                    {
+                        text = (t ?? '').toString();
+                        if (armedTile) armedTile.classList.remove('ring-2', 'ring-emerald-400', 'rounded');
+                        armedTile = tileEl || armedTile;
+                        armedTile?.classList.add('ring-2', 'ring-emerald-400', 'rounded');
+                        MP.targets.highlightEligibles();
+                        console.log('[MP] armed meal text len:', text.length);
+                    },
+                    clear()
+                    {
+                        text = null;
+                        armedTile?.classList.remove('ring-2', 'ring-emerald-400', 'rounded');
+                        armedTile = null;
+                        MP.targets.clearHighlights();
+                        console.log('[MP] disarmed');
+                    }
+                };
+            })();
+
+            MP.targets = {
+                all() { return $$('.meal-input'); }, // your existing textareas
+                isEmpty(el) { return !!el && el.value.trim() === ""; },
+                cardOf(el) { return el?.closest('.meal-day-card'); },
+                statusOf(el)
+                {
+                    const field = el?.closest('[data-meal-block]')?.dataset?.field;
+                    return field ? el.closest('.meal-day-card')?.querySelector(`.save-status[data-field="${field}"]`) : null;
+                },
+                highlightEligibles()
+                {
+                    this.all().forEach(el =>
+                    {
+                        if (this.isEmpty(el))
+                        {
+                            el.classList.add('ring-2', 'ring-emerald-400', 'rounded');
+                            el.classList.add('cursor-pointer');
+                            el.classList.remove('cursor-not-allowed');
+                        } else
+                        {
+                            el.classList.remove('ring-2', 'ring-emerald-400', 'rounded');
+                            el.classList.remove('cursor-pointer');
+                            el.classList.add('cursor-not-allowed');
+                        }
+                    });
+                },
+                clearHighlights()
+                {
+                    this.all().forEach(el =>
+                    {
+                        el.classList.remove('ring-2', 'ring-emerald-400', 'rounded', 'cursor-not-allowed', 'cursor-pointer');
+                    });
+                }
+            };
+
+            MP.drop = {
+                tryInsert(targetEl)
+                {
+                    if (!MP.arm.isArmed() || !targetEl) return false;
+                    if (!MP.targets.isEmpty(targetEl))
+                    {
+                        MP.ui.shake(targetEl);
+                        MP.ui.toast('Slot not empty', 'error', 1400);
+                        return false;
+                    }
+
+                    const prev = targetEl.value;
+                    const text = MP.arm.get();
+                    targetEl.value = text;
+
+                    const card = MP.targets.cardOf(targetEl);
+                    const status = MP.targets.statusOf(targetEl);
+
+                    // Persist via your existing helper
+                    try
+                    {
+                        if (typeof window.autoSaveCard === 'function')
+                        {
+                            window.autoSaveCard(card, targetEl);
+                        }
+                        MP.ui.markSaved(status);
+                    } catch (e)
+                    {
+                        console.error('autoSave error:', e);
+                        MP.ui.markFailed(status);
+                    }
+
+                    // Undo
+                    MP.ui.toastUndo('Added ✓', () =>
+                    {
+                        targetEl.value = prev;
+                        try { window.autoSaveCard?.(card, targetEl); } catch { }
+                    });
+
+                    const armedTile = MP.arm.getTile?.();
+                    if (armedTile?.closest?.('#queued-meals'))
+                    {
+                        const idx = Number(armedTile.dataset.queueIndex);
+                        if (Number.isInteger(idx)) queueRemoveAt(idx);
+                    }
+
+                    MP.arm.clear();
+                    return true;
+                }
+            };
+
+            // ---------- DRAG & DROP WIRING ----------
+            const Tray = {
+                container: null,
+                ghost: null,
+                dragging: false,
+                longPressTimer: null,
+                closeQuickTray()
+                {
+                    window.dispatchEvent(new CustomEvent('mp-close-tray'));
+                },
+
+                // Build a tiny drag ghost for touch
+                createGhost(text, x, y)
+                {
+                    this.ghost = document.createElement('div');
+                    this.ghost.className = 'mp-ghost';
+                    this.ghost.textContent = (text || '').slice(0, 80);
+                    document.body.appendChild(this.ghost);
+                    this.moveGhost(x, y);
+                },
+                moveGhost(x, y)
+                {
+                    if (!this.ghost) return;
+                    this.ghost.style.transform = `translate(${x + 12}px, ${y + 12}px)`;
+                },
+                destroyGhost()
+                {
+                    if (this.ghost?.parentNode) this.ghost.parentNode.removeChild(this.ghost);
+                    this.ghost = null;
+                },
+
+                // Touch: long-press → start drag with ghost
+                onPointerDownTile(e, tile)
+                {
+                    if (!tile?.dataset?.mealText) return;
+                    // Left mouse or touch only
+                    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+                    const text = tile.dataset.mealText;
+                    const startDrag = () =>
+                    {
+                        this.dragging = true;
+                        MP.arm.set(text, tile);
+                        MP.targets.highlightEligibles();
+                        this.closeQuickTray();
+                        this.createGhost(text, e.clientX, e.clientY);
+                        console.log('[MP] touch/ptr drag start');
+                    };
+
+                    // For touch/pointer: long press ~350ms to start
+                    this.longPressTimer = setTimeout(startDrag, 350);
+
+                    const move = (ev) =>
+                    {
+                        if (!this.dragging) return;
+                        this.moveGhost(ev.clientX, ev.clientY);
+                    };
+                    const up = (ev) =>
+                    {
+                        clearTimeout(this.longPressTimer);
+                        if (this.dragging)
+                        {
+                            this.destroyGhost();
+                            this.dragging = false;
+                            // Hit-test where we released
+                            const el = document.elementFromPoint(ev.clientX, ev.clientY);
+                            const target = el?.closest?.('.meal-input');
+                            if (target) MP.drop.tryInsert(target);
+                            else MP.arm.clear();
+                            console.log('[MP] touch/ptr drag end');
+                        }
+                        window.removeEventListener('pointermove', move);
+                        window.removeEventListener('pointerup', up, true);
+                        window.removeEventListener('pointercancel', up, true);
+                    };
+
+                    window.addEventListener('pointermove', move);
+                    window.addEventListener('pointerup', up, true);
+                    window.addEventListener('pointercancel', up, true);
+                },
+
+                // Desktop HTML5 DnD
+                onDragStart(e, tile)
+                {
+                    const text = tile.dataset.mealText;
+                    if (!text) return e.preventDefault();
+                    e.dataTransfer.setData('text/plain', text);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    MP.arm.set(text, tile);
+                    MP.targets.highlightEligibles();
+                    console.log('[MP] desktop dragstart');
+                },
+                onDragEnd()
+                {
+                    MP.arm.clear();
+                    console.log('[MP] desktop dragend');
+                }
+            };
+
+            // Targets accept drops (desktop)
+            function wireTargetsForDesktop()
+            {
+                MP.targets.all().forEach(el =>
+                {
+                    el.addEventListener('dragover', (e) =>
+                    {
+                        if (!MP.arm.isArmed()) return;
+                        e.preventDefault(); // allow drop
+                        e.dataTransfer.dropEffect = MP.targets.isEmpty(el) ? 'copy' : 'none';
+                    });
+                    el.addEventListener('drop', (e) =>
+                    {
+                        e.preventDefault();
+                        MP.drop.tryInsert(el);
+                    });
+                });
+            }
+
+            // Tap-to-drop (when armed)
+            function wireTapToDrop()
+            {
+                document.addEventListener('click', (e) =>
+                {
+                    if (!MP.arm.isArmed()) return;
+                    const ta = e.target.closest?.('.meal-input');
+                    if (!ta) return;
+                    MP.drop.tryInsert(ta);
+                });
+                // ESC to disarm
+                document.addEventListener('keydown', (e) =>
+                {
+                    if (e.key === 'Escape' && MP.arm.isArmed()) MP.arm.clear();
+                });
+            }
+
+            // Bind tray items (existing and future)
+            function wireTray(container = $('#drawer-meals'))
+            {
+                Tray.container = container;
+                if (!container) return;
+
+                const bindTile = (tile) =>
+                {
+                    if (tile.dataset.mpBound === '1') return;
+                    tile.dataset.mpBound = '1';
+
+                    // Make it draggable on desktop
+                    tile.setAttribute('draggable', 'true');
+
+                    // Desktop DnD
+                    tile.addEventListener('dragstart', (e) => Tray.onDragStart(e, tile));
+                    tile.addEventListener('dragend', () => Tray.onDragEnd());
+
+                    // Touch/pointer custom DnD + long press
+                    tile.addEventListener('pointerdown', (e) => Tray.onPointerDownTile(e, tile));
+
+                    // Simple tap-to-arm (iPad friendly)
+                    tile.addEventListener('click', (e) =>
+                    {
+                        if (e.target.closest('button')) return;
+                        // If we just ended a drag, ignore click
+                        if (Tray.dragging) return;
+                        MP.arm.set(tile.dataset.mealText, tile);
+                        MP.ui.toast('Meal armed. Tap an empty slot to insert.', 'ok', 1200);
+                    });
+                };
+
+                // Bind existing tiles
+                $$('[data-meal-text]', container).forEach(bindTile);
+
+                // If you dynamically render later, call wireTray() again or observe:
+                const mo = new MutationObserver((muts) =>
+                {
+                    muts.forEach(m => m.addedNodes.forEach(n =>
+                    {
+                        if (n.nodeType !== 1) return;
+                        if (n.matches?.('[data-meal-text]')) bindTile(n);
+                        // also bind any items inside fragments
+                        const firstNested = $("[data-meal-text]", n);
+                        if (firstNested) bindTile(firstNested);
+                        $$('[data-meal-text]', n).forEach(bindTile);
+                    }));
+                });
+                mo.observe(container, { childList: true, subtree: true });
+            }
+
+            // Init
+            function init()
+            {
+                try
+                {
+                    wireTray($('#drawer-meals'));
+                    wireTray($('#queued-meals'));
+                    wireTargetsForDesktop();
+                    wireTapToDrop();
+                    console.log('[MP] tray drag/drop ready');
+                } catch (e) { console.error('[MP] init error', e); }
+            }
+
+            if (document.readyState === 'loading')
+            {
+                document.addEventListener('DOMContentLoaded', init);
+            } else
+            {
+                init();
+            }
+        })();
     </script>
 </body>
 
