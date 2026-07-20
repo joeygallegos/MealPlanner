@@ -14,119 +14,37 @@
         }
 
         .mp-btn {
-            border-radius: 0.625rem;
-            font-weight: 600;
-            transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .mp-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
         }
 
         .mp-btn:focus-visible {
             outline: none;
-            box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.18);
+            box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.45), 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .mp-btn:visited,
+        .mp-btn:hover,
+        .mp-btn:active {
+            text-decoration: none;
         }
     </style>
 </head>
 
 <body class="bg-slate-50 text-slate-900">
+    {% set cfg = template_config %}
     <!-- CHANGED: provide drawer state + esc to close -->
     <div class="w-full px-8 py-12" x-data="{ drawer:false }" @keydown.window.escape="drawer=false"
         @mp-close-tray.window="drawer=false">
-        <!-- Header -->
-        <header class="mb-6">
-            {% set cfg = template_config %}
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div class="flex items-center gap-4">
-                    {% if cfg.title %}
-                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner - {{ cfg.title }}</h1>
-                    {% else %}
-                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner</h1>
-                    {% endif %}
-                    {% if cfg.show_days_until_payday %}
-                    <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold
-                       bg-yellow-300 text-yellow-900 shadow-sm ring-1 ring-yellow-400/60">
-                        🤑 <span id="payday-counter">...</span> days
-                    </span>
-                    {% endif %}
-                </div>
-
-                <nav class="flex items-center gap-2">
-                    <a href="/" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
-                        Home
-                    </a>
-                    <a href="/backwards" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-indigo-700 text-white hover:bg-indigo-600 shadow-sm">
-                        Backwards
-                    </a>
-                    <a href="/search" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
-                        Search
-                    </a>
-
-                    <!-- Hamburger to toggle drawer -->
-                    <button type="button" @click="drawer = true"
-                        class="mp-btn ml-2 inline-flex items-center justify-center w-10 h-10 border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                        aria-controls="quick-tray" :aria-expanded="drawer ? 'true' : 'false'"
-                        aria-label="Open quick tray">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-700" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M4 6h16M4 12h16M10 18h10" />
-                        </svg>
-                    </button>
-                </nav>
-            </div>
-
-            {% if cfg.show_meal_metrics %}
-            <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-
-                <!-- Eating out (last 7 days) -->
-                <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 flex items-center justify-between">
-                    <div>
-                        <div class="text-sm font-medium text-amber-800">Eating out (last 7 days)</div>
-                        <div class="mt-1 text-3xl font-bold">
-                            <span id="eat-out-counter">...</span>
-                            <span class="text-base font-semibold ml-1">days</span>
-                        </div>
-                    </div>
-                    <div class="shrink-0 text-3xl">🍔</div>
-                </div>
-
-                <!-- Veg servings (this month) -->
-                <div id="veggie-card" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                    <div class="flex items-center justify-between">
-                        <div class="text-sm font-medium text-emerald-800">Veg servings (this month)</div>
-                        <span id="veggie-delta"
-                            class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-                            +0 vs last
-                        </span>
-                    </div>
-                    <div class="mt-1 text-3xl font-bold">
-                        <span id="veggie-current-counter">...</span>
-                    </div>
-
-                    <!-- Progress to monthly goal -->
-                    <div class="mt-3 h-2 w-full rounded-full bg-emerald-100 overflow-hidden">
-                        <div id="veggie-progress" class="h-full bg-emerald-500" style="width:0%;"></div>
-                    </div>
-                    <div class="mt-1 text-xs text-emerald-800">
-                        <span id="veggie-goal-label">0</span>/<span id="veggie-goal-total">{{ cfg.veggie_goal or 30
-                            }}</span> goal
-                    </div>
-                </div>
-
-                <!-- Veg servings (last month) -->
-                <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
-                    <div class="text-sm font-medium text-sky-800">Veg servings (last month)</div>
-                    <div class="mt-1 text-3xl font-bold">
-                        <span id="veggie-last-counter">...</span>
-                    </div>
-                    <div class="mt-2 text-xs text-sky-800">Baseline for trend</div>
-                </div>
-
-            </div>
-            {% endif %}
-
-        </header>
+        {% include "partials/header.html" %}
 
         {# =========================
         Macro: single meal block

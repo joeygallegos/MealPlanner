@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meal Planner Export</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        .mp-btn {
+            border-radius: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .mp-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .mp-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.45), 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .mp-btn:visited,
+        .mp-btn:hover,
+        .mp-btn:active {
+            text-decoration: none;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div class="w-full px-8 py-12" x-data>
+        {% include "partials/header.html" %}
+
+        <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div class="max-w-3xl">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900">Export meal data</h2>
+                <p class="mt-2 text-sm leading-6 text-slate-600">
+                    Download everything from the meal planner database. JSON keeps each day nested with its meals.
+                    CSV flattens the export to one row per meal.
+                </p>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+                    <div class="text-sm font-medium text-sky-800">Meal days</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.meal_day_count }}</div>
+                </div>
+                <div class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                    <div class="text-sm font-medium text-emerald-800">Meals</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.meal_count }}</div>
+                </div>
+                <div class="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <div class="text-sm font-medium text-rose-800">Favorites</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.favorite_count }}</div>
+                </div>
+                <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                    <div class="text-sm font-medium text-amber-800">Takeout meals</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.takeout_count }}</div>
+                </div>
+                <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4">
+                    <div class="text-sm font-medium text-violet-800">Date range</div>
+                    <div class="mt-2 text-sm font-semibold text-slate-900">
+                        {% if export_summary.date_min and export_summary.date_max %}
+                        {{ export_summary.date_min }} to {{ export_summary.date_max }}
+                        {% else %}
+                        No meal data yet
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8 flex flex-wrap gap-3">
+                <a href="/api/export/meals.json"
+                    class="mp-btn inline-flex items-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 px-5 py-3 text-sm text-white hover:from-sky-400 hover:to-blue-500 hover:text-white focus:text-white focus:ring-2 focus:ring-sky-300 active:text-white visited:text-white">
+                    Download JSON
+                </a>
+                <a href="/api/export/meals.csv"
+                    class="mp-btn inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-3 text-sm text-white hover:from-emerald-400 hover:to-teal-500 hover:text-white focus:text-white focus:ring-2 focus:ring-emerald-300 active:text-white visited:text-white">
+                    Download CSV
+                </a>
+            </div>
+
+            <div class="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                <p><span class="font-semibold text-slate-900">Included fields:</span> meal day id, date, star/work flags, meal id, meal type, description, cooking user, favorite flag, and takeout flag.</p>
+            </div>
+        </section>
+    </div>
+</body>
+
+</html>

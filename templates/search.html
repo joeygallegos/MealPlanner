@@ -10,53 +10,34 @@
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         .mp-btn {
-            border-radius: 0.625rem;
-            font-weight: 600;
-            transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+            border-radius: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .mp-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
         }
 
         .mp-btn:focus-visible {
             outline: none;
+            box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.45), 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .mp-btn:visited,
+        .mp-btn:hover,
+        .mp-btn:active {
+            text-decoration: none;
         }
     </style>
 </head>
 
 <body class="bg-slate-50 text-slate-900">
     <div class="w-full px-8 py-12" x-data>
-        <!-- Header -->
-        <header class="mb-6">
-            {% set cfg = template_config %}
-            <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div class="flex items-center gap-4">
-                    {% if cfg.title %}
-                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner - {{ cfg.title }}</h1>
-                    {% else %}
-                    <h1 class="text-3xl font-bold leading-tight tracking-tight">Meal Planner</h1>
-                    {% endif %}
-                    {% if cfg.show_days_until_payday %}
-                    <span class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold
-                       bg-yellow-300 text-yellow-900 shadow-sm ring-1 ring-yellow-400/60">
-                        🤑 <span id="payday-counter">...</span> days
-                    </span>
-                    {% endif %}
-                </div>
-
-                <nav class="flex items-center gap-2">
-                    <a href="/" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
-                        Home
-                    </a>
-                    <a href="/backwards" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-indigo-700 text-white hover:bg-indigo-600 shadow-sm">
-                        Backwards
-                    </a>
-                    <a href="/search" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
-                        Search
-                    </a>
-                </nav>
-            </div>
-        </header>
+        {% include "partials/header.html" %}
 
 
 
@@ -65,8 +46,7 @@
             <input type="text" name="query" placeholder="Search meals..."
                 class="border border-slate-300 bg-white rounded-md px-4 py-2 min-w-[260px] text-slate-900 placeholder:text-slate-400"
                 autocomplete="off" />
-            <button type="submit" class="mp-btn inline-flex items-center px-4 py-2 text-sm
-                bg-slate-900 text-white hover:bg-slate-800 shadow-sm">
+            <button type="submit" class="mp-btn inline-flex items-center gap-2 bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm text-white hover:from-sky-400 hover:to-blue-500 hover:text-white focus:text-white focus:ring-2 focus:ring-sky-300 active:text-white">
                 Search
             </button>
             <label class="inline-flex items-center gap-2">
@@ -81,7 +61,7 @@
 
         <div class="mt-4 flex flex-wrap items-center gap-3">
             <button id="save-selected-btn" type="button"
-                class="mp-btn inline-flex items-center px-4 py-2 text-sm bg-emerald-700 text-white hover:bg-emerald-600 shadow-sm">
+                class="mp-btn inline-flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 text-sm text-white hover:from-emerald-400 hover:to-teal-500 hover:text-white focus:text-white focus:ring-2 focus:ring-emerald-300 active:text-white">
                 Copy Selected To Saved Meals
             </button>
             <span id="selected-count" class="text-sm text-gray-600">0 selected</span>

@@ -4,12 +4,14 @@ import os
 import random
 import re
 import json
-from datetime import date, datetime, timedelta
+import csv
+import io
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Dict, Any, List, Optional
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Body, Query
 from fastapi.datastructures import FormData
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session, joinedload
@@ -30,6 +32,7 @@ templates = Jinja2Templates(directory="templates")
 # Constant for UI and API logic
 DAYS = 9
 DAYS_BACKWARDS = 3  # How many days backwards to show on /backwards
+MEAL_TYPE_SORT_ORDER = {"breakfast": 0, "lunch": 1, "dinner": 2}
 
 
 def get_db():
@@ -39,6 +42,56 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def _sorted_meals(meals: list[Meal]) -> list[Meal]:
+    return sorted(
+        meals,
+        key=lambda meal: (MEAL_TYPE_SORT_ORDER.get(meal.type.value, 99), meal.id),
+    )
+
+
+def _fetch_meal_days_for_export(db: Session) -> list[MealDay]:
+    return (
+        db.query(MealDay)
+        .options(joinedload(MealDay.meals))
+        .order_by(MealDay.date.asc())
+        .all()
+    )
+
+
+def _serialize_meal(meal: Meal) -> dict[str, Any]:
+    return {
+        "id": meal.id,
+        "meal_day_id": meal.meal_day_id,
+        "type": meal.type.value,
+        "description": meal.description,
+        "cooking_user": meal.cooking_user,
+        "is_favorite": bool(meal.is_favorite),
+        "is_takeout": bool(meal.is_takeout),
+    }
+
+
+def _serialize_meal_day(meal_day: MealDay) -> dict[str, Any]:
+    return {
+        "id": meal_day.id,
+        "date": meal_day.date.isoformat(),
+        "is_starred": bool(meal_day.is_starred),
+        "is_sammy_working": bool(meal_day.is_sammy_working),
+        "meals": [_serialize_meal(meal) for meal in _sorted_meals(meal_day.meals)],
+    }
+
+
+def _build_export_summary(meal_days: list[MealDay]) -> dict[str, Any]:
+    meals = [meal for meal_day in meal_days for meal in meal_day.meals]
+    return {
+        "meal_day_count": len(meal_days),
+        "meal_count": len(meals),
+        "favorite_count": sum(1 for meal in meals if meal.is_favorite),
+        "takeout_count": sum(1 for meal in meals if meal.is_takeout),
+        "date_min": meal_days[0].date.isoformat() if meal_days else None,
+        "date_max": meal_days[-1].date.isoformat() if meal_days else None,
+    }
 
 
 # --------- HTML VIEWS --------------------------
@@ -81,6 +134,7 @@ def read_index(request: Request):
         "show_days_until_payday": True,
         "show_meal_metrics": True,
         "days_are_stale": False,
+        "show_quick_tray": True,
     }
 
     return templates.TemplateResponse(
@@ -117,6 +171,7 @@ def backwards_index(request: Request):
         "show_days_until_payday": False,
         "show_meal_metrics": False,
         "days_are_stale": True,
+        "show_quick_tray": True,
     }
 
     return templates.TemplateResponse(
@@ -373,11 +428,115 @@ def get_search(request: Request):
         "show_days_until_payday": False,
         "show_meal_metrics": False,
         "days_are_stale": False,
+        "show_quick_tray": False,
     }
 
     return templates.TemplateResponse(
         "search.html",
         {"request": request, "template_config": template_config},
+    )
+
+
+@app.get("/export", response_class=HTMLResponse)
+def get_export_page(request: Request):
+    db = SessionLocal()
+    try:
+        meal_days = _fetch_meal_days_for_export(db)
+        export_summary = _build_export_summary(meal_days)
+    finally:
+        db.close()
+
+    template_config = {
+        "title": "Export",
+        "show_days_until_payday": False,
+        "show_meal_metrics": False,
+        "days_are_stale": False,
+        "show_quick_tray": False,
+    }
+
+    return templates.TemplateResponse(
+        "export.html",
+        {
+            "request": request,
+            "template_config": template_config,
+            "export_summary": export_summary,
+        },
+    )
+
+
+@app.get("/api/export/meals.json")
+def export_meals_json():
+    db = SessionLocal()
+    try:
+        meal_days = _fetch_meal_days_for_export(db)
+        payload = {
+            "generated_at": datetime.now(UTC)
+            .isoformat(timespec="seconds")
+            .replace("+00:00", "Z"),
+            "meal_day_count": len(meal_days),
+            "meal_count": sum(len(meal_day.meals) for meal_day in meal_days),
+            "meal_days": [_serialize_meal_day(meal_day) for meal_day in meal_days],
+        }
+    finally:
+        db.close()
+
+    return Response(
+        content=json.dumps(payload, indent=2),
+        media_type="application/json",
+        headers={
+            "Content-Disposition": 'attachment; filename="meal-planner-export.json"'
+        },
+    )
+
+
+@app.get("/api/export/meals.csv")
+def export_meals_csv():
+    db = SessionLocal()
+    try:
+        meal_days = _fetch_meal_days_for_export(db)
+    finally:
+        db.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(
+        [
+            "meal_day_id",
+            "date",
+            "is_starred",
+            "is_sammy_working",
+            "meal_id",
+            "meal_type",
+            "description",
+            "cooking_user",
+            "is_favorite",
+            "is_takeout",
+        ]
+    )
+
+    for meal_day in meal_days:
+        for meal in _sorted_meals(meal_day.meals):
+            writer.writerow(
+                [
+                    meal_day.id,
+                    meal_day.date.isoformat(),
+                    bool(meal_day.is_starred),
+                    bool(meal_day.is_sammy_working),
+                    meal.id,
+                    meal.type.value,
+                    meal.description or "",
+                    meal.cooking_user or "",
+                    bool(meal.is_favorite),
+                    bool(meal.is_takeout),
+                ]
+            )
+
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": 'attachment; filename="meal-planner-export.csv"'
+        },
     )
 
 
