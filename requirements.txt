@@ -1,0 +1,12 @@
+# Web app
+fastapi==0.129.0
+uvicorn==0.41.0
+jinja2==3.1.6
+
+# Database
+sqlalchemy==2.0.46
+pymysql==1.1.2
+alembic==1.17.2
+
+# Configuration
+python-dotenv==1.2.1

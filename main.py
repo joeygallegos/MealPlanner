@@ -14,6 +14,7 @@ from fastapi.datastructures import FormData
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from models import MealDay, Meal, MealType, SessionLocal, init_db
@@ -33,6 +34,9 @@ templates = Jinja2Templates(directory="templates")
 DAYS = 9
 DAYS_BACKWARDS = 3  # How many days backwards to show on /backwards
 MEAL_TYPE_SORT_ORDER = {"breakfast": 0, "lunch": 1, "dinner": 2}
+DINNER_IMPORT_SCHEMA_VERSION = "mealplanner.chatgpt_dinner_plan.v1"
+DINNER_IMPORT_MAX_DAYS = 14
+DINNER_IMPORT_COOKING_USERS = {"Joey", "Sam"}
 
 
 def get_db():
@@ -69,6 +73,7 @@ def _serialize_meal(meal: Meal) -> dict[str, Any]:
         "cooking_user": meal.cooking_user,
         "is_favorite": bool(meal.is_favorite),
         "is_takeout": bool(meal.is_takeout),
+        "is_leftover": bool(meal.is_leftover),
     }
 
 
@@ -89,9 +94,238 @@ def _build_export_summary(meal_days: list[MealDay]) -> dict[str, Any]:
         "meal_count": len(meals),
         "favorite_count": sum(1 for meal in meals if meal.is_favorite),
         "takeout_count": sum(1 for meal in meals if meal.is_takeout),
+        "leftover_count": sum(1 for meal in meals if meal.is_leftover),
         "date_min": meal_days[0].date.isoformat() if meal_days else None,
         "date_max": meal_days[-1].date.isoformat() if meal_days else None,
     }
+
+
+def _parse_import_date(value: Any, path: str, errors: list[str]) -> Optional[date]:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        errors.append(f"{path} must be a date string in YYYY-MM-DD format.")
+        return None
+
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        errors.append(f"{path} is not a valid calendar date.")
+        return None
+
+
+def _optional_bool(value: Any, path: str, errors: list[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    errors.append(f"{path} must be true, false, or omitted.")
+    return None
+
+
+def _validate_dinner_import_plan(plan: Any) -> list[dict[str, Any]]:
+    errors: list[str] = []
+
+    if not isinstance(plan, dict):
+        raise HTTPException(status_code=422, detail="Import payload must be a JSON object.")
+
+    if plan.get("schema_version") != DINNER_IMPORT_SCHEMA_VERSION:
+        errors.append(
+            f"schema_version must be {DINNER_IMPORT_SCHEMA_VERSION!r}."
+        )
+
+    meal_days = plan.get("meal_days")
+    if not isinstance(meal_days, list):
+        errors.append("meal_days must be an array.")
+        meal_days = []
+    elif len(meal_days) > DINNER_IMPORT_MAX_DAYS:
+        errors.append(f"meal_days cannot contain more than {DINNER_IMPORT_MAX_DAYS} days.")
+    elif not meal_days:
+        errors.append("meal_days must contain at least one day.")
+
+    seen_dates: set[date] = set()
+    normalized_days: list[dict[str, Any]] = []
+
+    for index, day_payload in enumerate(meal_days):
+        path = f"meal_days[{index}]"
+        if not isinstance(day_payload, dict):
+            errors.append(f"{path} must be an object.")
+            continue
+
+        parsed_date = _parse_import_date(day_payload.get("date"), f"{path}.date", errors)
+        if parsed_date:
+            if parsed_date in seen_dates:
+                errors.append(f"{path}.date duplicates {parsed_date.isoformat()}.")
+            seen_dates.add(parsed_date)
+
+        dinner = day_payload.get("dinner")
+        if not isinstance(dinner, dict):
+            errors.append(f"{path}.dinner must be an object.")
+            continue
+
+        description = dinner.get("description")
+        if not isinstance(description, str) or not description.strip():
+            errors.append(f"{path}.dinner.description must be a non-empty string.")
+            description = ""
+
+        cooking_user = dinner.get("cooking_user")
+        if cooking_user == "":
+            cooking_user = None
+        if cooking_user is not None and cooking_user not in DINNER_IMPORT_COOKING_USERS:
+            errors.append(f"{path}.dinner.cooking_user must be Joey, Sam, null, or omitted.")
+
+        is_starred = _optional_bool(day_payload.get("is_starred"), f"{path}.is_starred", errors)
+        is_sammy_working = _optional_bool(
+            day_payload.get("is_sammy_working"), f"{path}.is_sammy_working", errors
+        )
+        is_favorite = _optional_bool(
+            dinner.get("is_favorite", False), f"{path}.dinner.is_favorite", errors
+        )
+        is_takeout = _optional_bool(
+            dinner.get("is_takeout", False), f"{path}.dinner.is_takeout", errors
+        )
+        is_leftover = _optional_bool(
+            dinner.get("is_leftover", False), f"{path}.dinner.is_leftover", errors
+        )
+
+        if parsed_date:
+            normalized_days.append(
+                {
+                    "date": parsed_date,
+                    "date_text": parsed_date.isoformat(),
+                    "description": description.strip(),
+                    "cooking_user": cooking_user,
+                    "is_favorite": bool(is_favorite),
+                    "is_takeout": bool(is_takeout),
+                    "is_leftover": bool(is_leftover),
+                    "has_is_starred": "is_starred" in day_payload,
+                    "is_starred": bool(is_starred),
+                    "has_is_sammy_working": "is_sammy_working" in day_payload,
+                    "is_sammy_working": bool(is_sammy_working),
+                }
+            )
+
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
+    return normalized_days
+
+
+def _ensure_meal_day_for_import(db: Session, day_date: date) -> tuple[MealDay, bool]:
+    meal_day = (
+        db.query(MealDay)
+        .options(joinedload(MealDay.meals))
+        .filter(MealDay.date == day_date)
+        .first()
+    )
+    if meal_day:
+        return meal_day, False
+
+    meal_day = MealDay(date=day_date)
+    meal_day.meals = [
+        Meal(type=MealType.breakfast),
+        Meal(type=MealType.lunch),
+        Meal(type=MealType.dinner),
+    ]
+    db.add(meal_day)
+    db.flush()
+    return meal_day, True
+
+
+def _ensure_meals_by_type(meal_day: MealDay) -> dict[str, Meal]:
+    meals_by_type = {meal.type.value: meal for meal in meal_day.meals}
+    for meal_type in MealType:
+        if meal_type.value not in meals_by_type:
+            meal = Meal(type=meal_type)
+            meal_day.meals.append(meal)
+            meals_by_type[meal_type.value] = meal
+    return meals_by_type
+
+
+def _preview_dinner_import_days(db: Session, days: list[dict[str, Any]]) -> dict[str, Any]:
+    rows = []
+    counts = {
+        "create": 0,
+        "update": 0,
+        "unchanged": 0,
+        "conflict": 0,
+        "skipped": 0,
+        "invalid": 0,
+    }
+
+    for day in days:
+        meal_day = (
+            db.query(MealDay)
+            .options(joinedload(MealDay.meals))
+            .filter(MealDay.date == day["date"])
+            .first()
+        )
+        dinner = None
+        if meal_day:
+            dinner = next(
+                (meal for meal in meal_day.meals if meal.type == MealType.dinner),
+                None,
+            )
+
+        existing_description = dinner.description if dinner else None
+        incoming_description = day["description"]
+        has_conflict = bool(
+            existing_description and existing_description.strip() != incoming_description
+        )
+
+        if not meal_day:
+            action = "create"
+        elif (
+            existing_description == incoming_description
+            and bool(dinner.is_favorite if dinner else False) == day["is_favorite"]
+            and bool(dinner.is_takeout if dinner else False) == day["is_takeout"]
+            and bool(dinner.is_leftover if dinner else False) == day["is_leftover"]
+            and (dinner.cooking_user if dinner else None) == day["cooking_user"]
+        ):
+            action = "unchanged"
+        else:
+            action = "update"
+
+        counts[action] += 1
+        if has_conflict:
+            counts["conflict"] += 1
+
+        rows.append(
+            {
+                "date": day["date_text"],
+                "action": action,
+                "has_conflict": has_conflict,
+                "existing_description": existing_description,
+                "incoming_description": incoming_description,
+                "cooking_user": day["cooking_user"],
+                "is_favorite": day["is_favorite"],
+                "is_takeout": day["is_takeout"],
+                "is_leftover": day["is_leftover"],
+            }
+        )
+
+    return {"counts": counts, "rows": rows}
+
+
+def _apply_dinner_import_days(db: Session, days: list[dict[str, Any]]) -> dict[str, Any]:
+    preview = _preview_dinner_import_days(db, days)
+
+    for day in days:
+        meal_day, created_day = _ensure_meal_day_for_import(db, day["date"])
+        meals_by_type = _ensure_meals_by_type(meal_day)
+        dinner = meals_by_type["dinner"]
+
+        dinner.description = day["description"]
+        dinner.cooking_user = day["cooking_user"]
+        dinner.is_favorite = day["is_favorite"]
+        dinner.is_takeout = day["is_takeout"]
+        dinner.is_leftover = day["is_leftover"]
+
+        if created_day or day["has_is_starred"]:
+            meal_day.is_starred = day["is_starred"]
+        if created_day or day["has_is_sammy_working"]:
+            meal_day.is_sammy_working = day["is_sammy_working"]
+
+    db.commit()
+    return preview
 
 
 # --------- HTML VIEWS --------------------------
@@ -215,6 +449,12 @@ def _update_days_from_payload(days: list[dict], db):
                 )
                 # Make change
                 meal.is_takeout = is_truthy(meal_fields.get("is_takeout", "off"))
+
+            if meal.is_leftover is not None or "is_leftover" in meal_fields:
+                print(
+                    f"Current {meal_type} for day {meal_day.date}: is_leftover={meal.is_leftover} -> New: {meal_fields.get('is_leftover', 'off')}"
+                )
+                meal.is_leftover = is_truthy(meal_fields.get("is_leftover", "off"))
 
             # Update cooking_user and is_favorite correctly if present
             if meal.cooking_user is not None or "cooking_user" in meal_fields:
@@ -381,6 +621,7 @@ def get_search_meal(
     favorites_only: Optional[bool] = False,
     only_favorites: Optional[bool] = Query(default=None),
     include_takeout: Optional[bool] = False,
+    include_leftovers: Optional[bool] = False,
     limit: int = 60,
 ):
     term = (query or "").strip()
@@ -392,29 +633,35 @@ def get_search_meal(
     use_favorites_filter = is_truthy(favorites_only) or is_truthy(only_favorites)
 
     try:
-        query_obj = (
-            db.query(Meal.description)
+        normalized_description = func.lower(func.trim(Meal.description))
+        latest_match_ids = (
+            db.query(func.max(Meal.id).label("meal_id"))
             .filter(Meal.description.isnot(None))
             .filter(Meal.description != "")
             .filter(Meal.description.ilike(f"%{term}%"))
         )
         if use_favorites_filter:
-            query_obj = query_obj.filter(Meal.is_favorite == True)
+            latest_match_ids = latest_match_ids.filter(Meal.is_favorite == True)
         if not is_truthy(include_takeout):
-            query_obj = query_obj.filter(Meal.is_takeout == False)
+            latest_match_ids = latest_match_ids.filter(Meal.is_takeout == False)
+        if not is_truthy(include_leftovers):
+            latest_match_ids = latest_match_ids.filter(Meal.is_leftover == False)
 
-        rows = query_obj.order_by(Meal.id.desc()).limit(safe_limit).all()
+        latest_match_ids = (
+            latest_match_ids.group_by(normalized_description)
+            .order_by(func.max(Meal.id).desc())
+            .limit(safe_limit)
+            .subquery()
+        )
 
-        seen = set()
-        deduped = []
-        for (text,) in rows:
-            normalized = text.strip().lower()
-            if not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            deduped.append(text.strip())
+        rows = (
+            db.query(Meal.description)
+            .join(latest_match_ids, Meal.id == latest_match_ids.c.meal_id)
+            .order_by(latest_match_ids.c.meal_id.desc())
+            .all()
+        )
 
-        return {"results": deduped}
+        return {"results": [text.strip() for (text,) in rows if text and text.strip()]}
     finally:
         db.close()
 
@@ -434,6 +681,26 @@ def get_search(request: Request):
     return templates.TemplateResponse(
         "search.html",
         {"request": request, "template_config": template_config},
+    )
+
+
+@app.get("/import", response_class=HTMLResponse)
+def get_import_page(request: Request):
+    template_config = {
+        "title": "Import",
+        "show_days_until_payday": False,
+        "show_meal_metrics": False,
+        "days_are_stale": False,
+        "show_quick_tray": False,
+    }
+
+    return templates.TemplateResponse(
+        "import.html",
+        {
+            "request": request,
+            "template_config": template_config,
+            "schema_version": DINNER_IMPORT_SCHEMA_VERSION,
+        },
     )
 
 
@@ -462,6 +729,29 @@ def get_export_page(request: Request):
             "export_summary": export_summary,
         },
     )
+
+
+@app.post("/api/import/dinner-plan", response_class=JSONResponse)
+def import_dinner_plan(payload: Dict[str, Any] = Body(...)):
+    dry_run = is_truthy(payload.get("dry_run", True))
+    plan = payload.get("plan")
+    if plan is None:
+        raise HTTPException(status_code=422, detail="Missing 'plan' field.")
+
+    days = _validate_dinner_import_plan(plan)
+
+    db = SessionLocal()
+    try:
+        result = _preview_dinner_import_days(db, days)
+        if not dry_run:
+            result = _apply_dinner_import_days(db, days)
+        return {
+            "status": "preview" if dry_run else "imported",
+            "dry_run": dry_run,
+            **result,
+        }
+    finally:
+        db.close()
 
 
 @app.get("/api/export/meals.json")
@@ -511,6 +801,7 @@ def export_meals_csv():
             "cooking_user",
             "is_favorite",
             "is_takeout",
+            "is_leftover",
         ]
     )
 
@@ -528,6 +819,7 @@ def export_meals_csv():
                     meal.cooking_user or "",
                     bool(meal.is_favorite),
                     bool(meal.is_takeout),
+                    bool(meal.is_leftover),
                 ]
             )
 

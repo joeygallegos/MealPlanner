@@ -49,6 +49,7 @@ class Meal(Base):
     cooking_user = Column(String(10), nullable=True)  # NEW: 'Joey' or 'Sam'
     is_favorite = Column(Boolean, default=False, nullable=False)
     is_takeout = Column(Boolean, default=False, nullable=False)
+    is_leftover = Column(Boolean, default=False, nullable=False)
     day = relationship("MealDay", back_populates="meals")
 
 

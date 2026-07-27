@@ -54,6 +54,10 @@
                 <span class="text-sm text-gray-700">Include Takeout</span>
             </label>
             <label class="inline-flex items-center gap-2">
+                <input type="checkbox" name="include_leftovers" class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
+                <span class="text-sm text-gray-700">Include Leftovers</span>
+            </label>
+            <label class="inline-flex items-center gap-2">
                 <input type="checkbox" name="only_favorites" class="h-4 w-4 text-blue-600 border-gray-300 rounded" />
                 <span class="text-sm text-gray-700">Only Favorites</span>
             </label>
@@ -86,6 +90,7 @@
         const searchForm = document.getElementById('meal-search-form');
         const searchInput = searchForm.querySelector('input[name="query"]');
         const includeTakeoutInput = searchForm.querySelector('input[name="include_takeout"]');
+        const includeLeftoversInput = searchForm.querySelector('input[name="include_leftovers"]');
         const onlyFavoritesInput = searchForm.querySelector('input[name="only_favorites"]');
         const resultsContainer = document.getElementById('search-results');
         const selectedCountEl = document.getElementById('selected-count');
@@ -203,11 +208,12 @@
 
             const requestId = ++searchRequestId;
             const includeTakeout = includeTakeoutInput.checked;
+            const includeLeftovers = includeLeftoversInput.checked;
             const onlyFavorites = onlyFavoritesInput.checked;
 
             try
             {
-                const url = `/api/search?query=${encodeURIComponent(query)}&include_takeout=${includeTakeout}&only_favorites=${onlyFavorites}`;
+                const url = `/api/search?query=${encodeURIComponent(query)}&include_takeout=${includeTakeout}&include_leftovers=${includeLeftovers}&only_favorites=${onlyFavorites}`;
                 const response = await fetch(url);
                 if (!response.ok) throw new Error('Search failed');
                 const data = await response.json();
@@ -240,6 +246,7 @@
         });
         searchInput.addEventListener('input', debouncedSearch);
         includeTakeoutInput.addEventListener('change', runSearch);
+        includeLeftoversInput.addEventListener('change', runSearch);
         onlyFavoritesInput.addEventListener('change', runSearch);
 
         resultsContainer.addEventListener('click', (event) =>

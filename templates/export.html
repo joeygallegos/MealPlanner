@@ -47,7 +47,7 @@
                 </p>
             </div>
 
-            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
                 <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4">
                     <div class="text-sm font-medium text-sky-800">Meal days</div>
                     <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.meal_day_count }}</div>
@@ -63,6 +63,10 @@
                 <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4">
                     <div class="text-sm font-medium text-amber-800">Takeout meals</div>
                     <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.takeout_count }}</div>
+                </div>
+                <div class="rounded-2xl border border-lime-200 bg-lime-50 p-4">
+                    <div class="text-sm font-medium text-lime-800">Leftovers</div>
+                    <div class="mt-2 text-3xl font-bold text-slate-900">{{ export_summary.leftover_count }}</div>
                 </div>
                 <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4">
                     <div class="text-sm font-medium text-violet-800">Date range</div>
@@ -88,7 +92,7 @@
             </div>
 
             <div class="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                <p><span class="font-semibold text-slate-900">Included fields:</span> meal day id, date, star/work flags, meal id, meal type, description, cooking user, favorite flag, and takeout flag.</p>
+                <p><span class="font-semibold text-slate-900">Included fields:</span> meal day id, date, star/work flags, meal id, meal type, description, cooking user, favorite flag, takeout flag, and leftover flag.</p>
             </div>
         </section>
     </div>

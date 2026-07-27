@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meal Planner Import</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+        [x-cloak] {
+            display: none !important
+        }
+
+        .mp-btn {
+            border-radius: 0.75rem;
+            font-weight: 700;
+            text-decoration: none;
+            transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
+        }
+
+        .mp-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+
+        .mp-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.45), 0 14px 24px rgba(15, 23, 42, 0.12);
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div class="w-full px-8 py-12" x-data="dinnerImportApp()">
+        {% include "partials/header.html" %}
+
+        <main class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-bold tracking-tight">ChatGPT prompt</h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-600">
+                            Copy this into ChatGPT, edit the preferences, then paste the JSON answer on the right.
+                        </p>
+                    </div>
+                    <button type="button"
+                        class="mp-btn bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm text-white hover:from-sky-400 hover:to-blue-500"
+                        @click="copyPrompt()" x-text="promptCopied ? 'Copied' : 'Copy prompt'"></button>
+                </div>
+
+                <textarea readonly rows="24"
+                    class="mt-4 block w-full rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-xs leading-5 text-slate-800"
+                    x-model="promptText"></textarea>
+
+                <div class="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                    Schema:
+                    <a class="font-semibold underline" href="/static/chatgpt-dinner-plan.schema.json" target="_blank"
+                        rel="noreferrer">chatgpt-dinner-plan.schema.json</a>
+                </div>
+            </section>
+
+            <section class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h2 class="text-xl font-bold tracking-tight">Import dinner JSON</h2>
+                        <p class="mt-1 text-sm leading-6 text-slate-600">
+                            Preview checks dates, conflicts, and validation errors before anything is saved.
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button"
+                            class="mp-btn bg-gradient-to-r from-emerald-500 to-teal-600 px-4 py-2 text-sm text-white hover:from-emerald-400 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="isBusy" @click="previewImport()">Preview</button>
+                        <button type="button"
+                            class="mp-btn bg-gradient-to-r from-amber-500 to-orange-600 px-4 py-2 text-sm text-white hover:from-amber-400 hover:to-orange-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="isBusy || !previewResult || previewSource !== jsonText"
+                            @click="applyImport()">Import</button>
+                    </div>
+                </div>
+
+                <textarea rows="18"
+                    class="mt-4 block w-full rounded-lg border border-slate-300 p-3 font-mono text-sm leading-6"
+                    placeholder='Paste ChatGPT JSON here, starting with {"schema_version": "..."}'
+                    x-model="jsonText"></textarea>
+
+                <div x-cloak x-show="message"
+                    class="mt-4 rounded-xl border p-3 text-sm"
+                    :class="messageType === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'"
+                    x-text="message"></div>
+
+                <template x-if="errors.length">
+                    <div class="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                        <div class="font-semibold">Validation errors</div>
+                        <ul class="mt-2 list-disc space-y-1 pl-5">
+                            <template x-for="error in errors" :key="error">
+                                <li x-text="error"></li>
+                            </template>
+                        </ul>
+                    </div>
+                </template>
+
+                <template x-if="previewResult">
+                    <div class="mt-5">
+                        <div class="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+                            <div class="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-sky-800">Create</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.create"></div>
+                            </div>
+                            <div class="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-amber-800">Update</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.update"></div>
+                            </div>
+                            <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-emerald-800">Same</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.unchanged"></div>
+                            </div>
+                            <div class="rounded-xl border border-rose-200 bg-rose-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-rose-800">Conflicts</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.conflict"></div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-slate-800">Skipped</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.skipped"></div>
+                            </div>
+                            <div class="rounded-xl border border-red-200 bg-red-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-red-800">Invalid</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.counts.invalid"></div>
+                            </div>
+                            <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                <div class="text-xs font-semibold uppercase text-slate-800">Rows</div>
+                                <div class="mt-1 text-2xl font-bold" x-text="previewResult.rows.length"></div>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                            <table class="min-w-full divide-y divide-slate-200 text-sm">
+                                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase text-slate-600">
+                                    <tr>
+                                        <th class="px-3 py-2">Date</th>
+                                        <th class="px-3 py-2">Action</th>
+                                        <th class="px-3 py-2">Incoming dinner</th>
+                                        <th class="px-3 py-2">Existing dinner</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-200 bg-white">
+                                    <template x-for="row in previewResult.rows" :key="row.date">
+                                        <tr>
+                                            <td class="whitespace-nowrap px-3 py-3 font-semibold" x-text="row.date"></td>
+                                            <td class="whitespace-nowrap px-3 py-3">
+                                                <span class="rounded-full px-2 py-1 text-xs font-semibold"
+                                                    :class="badgeClass(row)"
+                                                    x-text="row.has_conflict ? `${row.action} conflict` : row.action"></span>
+                                            </td>
+                                            <td class="px-3 py-3" x-text="row.incoming_description"></td>
+                                            <td class="px-3 py-3 text-slate-500"
+                                                x-text="row.existing_description || 'Empty'"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        function dinnerImportApp()
+        {
+            const promptText = `Generate a dinner plan as JSON only. Do not include markdown, comments, or explanation.
+
+Conform exactly to this schema:
+- schema_version must be "mealplanner.chatgpt_dinner_plan.v1"
+- meal_days must contain 3 to 7 days unless I ask for a different number
+- date must use YYYY-MM-DD
+- each day must include dinner.description
+- dinner.cooking_user may be "Joey", "Sam", or null
+- dinner.is_favorite, dinner.is_takeout, and dinner.is_leftover must be booleans
+
+Use this JSON shape:
+{
+  "schema_version": "mealplanner.chatgpt_dinner_plan.v1",
+  "meal_days": [
+    {
+      "date": "2026-07-21",
+      "is_starred": false,
+      "is_sammy_working": false,
+      "dinner": {
+        "description": "Chicken fajita bowls with peppers, onions, rice, salsa, and avocado",
+        "cooking_user": "Joey",
+        "is_favorite": false,
+        "is_takeout": false,
+        "is_leftover": false
+      }
+    }
+  ]
+}
+
+My preferences:
+[Paste dinner preferences, dates, budget, dietary limits, leftovers, ingredients to use, or restaurants here.]`;
+
+            return {
+                promptText,
+                promptCopied: false,
+                jsonText: '',
+                previewResult: null,
+                previewSource: '',
+                errors: [],
+                message: '',
+                messageType: 'ok',
+                isBusy: false,
+                async copyPrompt()
+                {
+                    await navigator.clipboard.writeText(this.promptText);
+                    this.promptCopied = true;
+                    setTimeout(() => this.promptCopied = false, 1500);
+                },
+                parsePlan()
+                {
+                    this.errors = [];
+                    this.message = '';
+                    this.previewResult = null;
+                    try
+                    {
+                        return JSON.parse(this.jsonText);
+                    } catch (error)
+                    {
+                        this.errors = [`Invalid JSON: ${error.message}`];
+                        return null;
+                    }
+                },
+                async sendImport(dryRun)
+                {
+                    const plan = this.parsePlan();
+                    if (!plan) return;
+
+                    this.isBusy = true;
+                    try
+                    {
+                        const response = await fetch('/api/import/dinner-plan', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ dry_run: dryRun, plan })
+                        });
+                        const data = await response.json();
+                        if (!response.ok)
+                        {
+                            this.showApiErrors(data);
+                            return;
+                        }
+
+                        this.previewResult = data;
+                        if (dryRun)
+                        {
+                            this.previewSource = this.jsonText;
+                        }
+                        this.messageType = 'ok';
+                        this.message = dryRun ? 'Preview ready. Review the rows, then click Import.' : 'Dinner plan imported.';
+                    } catch (error)
+                    {
+                        this.errors = [error.message || 'Import request failed.'];
+                    } finally
+                    {
+                        this.isBusy = false;
+                    }
+                },
+                previewImport()
+                {
+                    this.sendImport(true);
+                },
+                applyImport()
+                {
+                    this.sendImport(false);
+                },
+                showApiErrors(data)
+                {
+                    const message = data?.message;
+                    if (message?.errors)
+                    {
+                        this.errors = message.errors;
+                    } else if (typeof message === 'string')
+                    {
+                        this.errors = [message];
+                    } else
+                    {
+                        this.errors = ['Import failed.'];
+                    }
+                },
+                badgeClass(row)
+                {
+                    if (row.has_conflict) return 'bg-rose-100 text-rose-800';
+                    if (row.action === 'create') return 'bg-sky-100 text-sky-800';
+                    if (row.action === 'update') return 'bg-amber-100 text-amber-800';
+                    return 'bg-emerald-100 text-emerald-800';
+                }
+            };
+        }
+    </script>
+</body>
+
+</html>
