@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    {% include "partials/head_assets.html" %}
+    <title>Meal Planner Share</title>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div class="w-full px-8 py-12" x-data="shareMealPlan()">
+        {% include "partials/header.html" %}
+
+        <section class="grid min-h-[75vh] grid-cols-1 gap-6 xl:grid-cols-[380px_minmax(0,1fr)]">
+            <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <h2 class="text-2xl font-bold tracking-tight text-slate-900">{{ share.title }}</h2>
+                <p class="mt-2 text-sm leading-6 text-slate-600">
+                    Preview the PDF, add an optional note, then send the attached plan by email.
+                </p>
+
+                <dl class="mt-5 space-y-3 text-sm">
+                    <div>
+                        <dt class="font-semibold text-slate-700">Date range</dt>
+                        <dd class="text-slate-900">{{ share.start_display }} to {{ share.end_display }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-semibold text-slate-700">Generated</dt>
+                        <dd class="text-slate-900">{{ share.generated_at }}</dd>
+                    </div>
+                    <div>
+                        <dt class="font-semibold text-slate-700">Attachment</dt>
+                        <dd class="break-all text-slate-900">{{ share.filename }}</dd>
+                    </div>
+                </dl>
+
+                <label for="share-recipient" class="mt-6 block text-sm font-semibold text-slate-700">Recipient
+                    email</label>
+                <input id="share-recipient" x-ref="recipientInput" x-model="recipient" type="email" required
+                    class="mt-2 block w-full rounded-md border border-slate-300 p-3 text-sm shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                    placeholder="person@example.com">
+
+                <label for="share-note" class="mt-6 block text-sm font-semibold text-slate-700">Optional note</label>
+                <textarea id="share-note" x-model="note" rows="5"
+                    class="mt-2 block w-full rounded-md border border-slate-300 p-3 text-sm shadow-sm focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                    placeholder="Add a short message for the email body."></textarea>
+
+                <div class="mt-5 flex flex-wrap gap-3">
+                    <a href="/api/share/current-window.pdf" target="_blank"
+                        class="mp-btn inline-flex items-center gap-2 bg-white px-4 py-2 text-sm text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50">
+                        Open PDF
+                    </a>
+                    <button type="button" @click="send()" :disabled="sending"
+                        class="mp-btn inline-flex items-center gap-2 bg-gradient-to-r from-cyan-600 to-indigo-600 px-4 py-2 text-sm text-white hover:from-cyan-500 hover:to-indigo-500 disabled:cursor-not-allowed disabled:opacity-60">
+                        <span x-text="sending ? 'Sending...' : 'Send Email'"></span>
+                    </button>
+                </div>
+
+                <div x-cloak x-show="message" class="mt-4 rounded-md p-3 text-sm"
+                    :class="status === 'ok' ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200'"
+                    x-text="message" role="status" aria-live="polite"></div>
+            </div>
+
+            <div class="min-h-[75vh] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <iframe src="/api/share/current-window.pdf" title="Current meal plan PDF preview"
+                    class="h-[75vh] w-full"></iframe>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Alpine component for the Share page. The server owns the real send
+        // validation/rate limiting; this keeps the browser flow immediate and clear.
+        function shareMealPlan()
+        {
+            return {
+                // Seed from MAILGUN_TO_EMAIL, but allow a one-off recipient change
+                // without changing server configuration.
+                recipient: {{ share.default_recipient | tojson }},
+                note: "",
+                sending: false,
+                status: "",
+                message: "",
+                async send()
+                {
+                    // Use native browser email validation before making the API call.
+                    // The backend repeats validation so direct POSTs cannot bypass it.
+                    if (!this.$refs.recipientInput.reportValidity())
+                    {
+                        return;
+                    }
+                    this.sending = true;
+                    this.message = "";
+                    this.status = "";
+                    try
+                    {
+                        // The backend regenerates the PDF at send time so the email
+                        // attachment matches the latest saved meal-plan state.
+                        const response = await fetch("/api/share/current-window/send", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ recipient: this.recipient, note: this.note })
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok)
+                        {
+                            throw new Error(data.message || "Email could not be sent.");
+                        }
+                        this.status = "ok";
+                        this.message = `Email sent with ${data.filename}.`;
+                    } catch (error)
+                    {
+                        // Surface sanitized server errors near the send button instead
+                        // of exposing Mailgun response bodies or implementation details.
+                        this.status = "error";
+                        this.message = error.message || "Email could not be sent.";
+                    } finally
+                    {
+                        this.sending = false;
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+
+</html>

@@ -5,16 +5,28 @@ import random
 import re
 import json
 import csv
+import html
 import io
 import logging
+import threading
 from datetime import UTC, date, datetime, timedelta
+from email.utils import parseaddr
 from pathlib import Path
+from time import monotonic
 from typing import Dict, Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+import requests
 from fastapi import FastAPI, Request, Depends, HTTPException, Body, Query
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -54,6 +66,22 @@ MEAL_TYPE_SORT_ORDER = {"breakfast": 0, "lunch": 1, "dinner": 2}
 DINNER_IMPORT_SCHEMA_VERSION = "mealplanner.chatgpt_dinner_plan.v1"
 DINNER_IMPORT_MAX_DAYS = 14
 DINNER_IMPORT_COOKING_USERS = {"Joey", "Sam"}
+APP_TIMEZONE_ENV = "APP_TIMEZONE"
+DEFAULT_APP_TIMEZONE = "America/Chicago"
+# The share PDF intentionally uses a browser-viewing canvas, not a paper size,
+# so the 9-day window can stay in one horizontal row and be zoomed by the recipient.
+SHARE_PDF_DAY_WIDTH = 2.45 * inch
+SHARE_PDF_DAY_GAP = 0.14 * inch
+SHARE_PDF_MARGIN = 0.32 * inch
+SHARE_PDF_HEIGHT = 7.7 * inch
+MAILGUN_SEND_TIMEOUT_SECONDS = 15
+MAILGUN_SEND_RATE_LIMIT_COUNT = 5
+MAILGUN_SEND_RATE_LIMIT_SECONDS = 5 * 60
+# The send lock prevents duplicate clicks from launching overlapping Mailgun
+# requests. The timestamp list is intentionally process-local: enough for this
+# small single-service app without introducing persistent rate-limit storage.
+_mailgun_send_lock = threading.Lock()
+_mailgun_send_timestamps: list[float] = []
 
 
 def get_db():
@@ -79,6 +107,407 @@ def _fetch_meal_days_for_export(db: Session) -> list[MealDay]:
         .order_by(MealDay.date.asc())
         .all()
     )
+
+
+def _fetch_or_create_current_window(db: Session) -> list[MealDay]:
+    """Return the same forward planning window used by Home, creating blank days as needed."""
+    today = _today_in_app_timezone()
+    days = []
+
+    for i in range(DAYS):
+        current_date = today + timedelta(days=i)
+        meal_day = (
+            db.query(MealDay)
+            .options(joinedload(MealDay.meals))
+            .filter(MealDay.date == current_date)
+            .first()
+        )
+
+        if not meal_day:
+            meal_day = MealDay(date=current_date)
+            meal_day.meals = [
+                Meal(type=MealType.breakfast),
+                Meal(type=MealType.lunch),
+                Meal(type=MealType.dinner),
+            ]
+            db.add(meal_day)
+            db.flush()
+
+        days.append(meal_day)
+
+    db.commit()
+    return days
+
+
+def _format_display_date(value: date) -> str:
+    return value.strftime("%m/%d/%Y")
+
+
+def _format_share_title_date(value: date) -> str:
+    return f"{value.strftime('%A')} {value.strftime('%m/%d')}"
+
+
+def _format_generated_at(value: datetime) -> str:
+    """Format UTC instants for people using the configured household timezone."""
+    return value.astimezone(_app_timezone()).strftime("%m/%d/%Y %H:%M %Z")
+
+
+def _format_storage_timestamp(value: datetime) -> str:
+    """Keep machine-readable/export timestamps in UTC regardless of display timezone."""
+    return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _app_timezone() -> ZoneInfo:
+    """Resolve the display timezone once per call so env changes apply after restart/tests."""
+    timezone_name = os.getenv(APP_TIMEZONE_ENV, DEFAULT_APP_TIMEZONE).strip()
+    try:
+        return ZoneInfo(timezone_name or DEFAULT_APP_TIMEZONE)
+    except ZoneInfoNotFoundError:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{APP_TIMEZONE_ENV} must be a valid IANA timezone name.",
+        )
+
+
+def _now_utc() -> datetime:
+    return datetime.now(UTC)
+
+
+def _today_in_app_timezone() -> date:
+    return _now_utc().astimezone(_app_timezone()).date()
+
+
+def _share_date_range(meal_days: list[MealDay]) -> dict[str, str]:
+    """Build every date label from one source so preview, PDF, email, and filenames match."""
+    start = meal_days[0].date
+    end = meal_days[-1].date
+    return {
+        "start_display": _format_display_date(start),
+        "end_display": _format_display_date(end),
+        "title": f"Meal plan: {_format_share_title_date(start)} to {_format_share_title_date(end)}",
+        "start_iso": start.isoformat(),
+        "end_iso": end.isoformat(),
+        "filename": f"meal-plan-{start.isoformat()}-to-{end.isoformat()}.pdf",
+    }
+
+
+def _meal_by_type(meal_day: MealDay) -> dict[str, Meal]:
+    return {meal.type.value: meal for meal in meal_day.meals}
+
+
+def _meal_badges(meal: Optional[Meal]) -> list[tuple[str, str, str]]:
+    """Return text plus colors for meal badges that mirror the Home page states."""
+    if not meal:
+        return []
+
+    badges = []
+    if meal.cooking_user:
+        badges.append(("Cook: " + meal.cooking_user, "#dbeafe", "#1e40af"))
+    if meal.is_takeout:
+        badges.append(("Takeout", "#ffedd5", "#9a3412"))
+    if meal.is_leftover:
+        badges.append(("Leftover", "#ecfccb", "#3f6212"))
+    if meal.is_favorite:
+        badges.append(("Favorite", "#ffe4e6", "#9f1239"))
+    return badges
+
+
+def _share_window_context(meal_days: list[MealDay]) -> dict[str, Any]:
+    date_range = _share_date_range(meal_days)
+    generated_at = _now_utc()
+
+    return {
+        **date_range,
+        # Display time is local for the human preview; UTC is retained for any
+        # machine-facing value that may be reused by exports or future auditing.
+        "generated_at": _format_generated_at(generated_at),
+        "generated_at_utc": _format_storage_timestamp(generated_at),
+        "default_recipient": os.getenv("MAILGUN_TO_EMAIL", "").strip(),
+        "days": meal_days,
+    }
+
+
+def _draw_wrapped_text(
+    pdf: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    width: float,
+    style_name: str,
+    max_height: float,
+) -> float:
+    """Draw paragraph text inside a fixed-height PDF region and report used height."""
+    styles = getSampleStyleSheet()
+    paragraph = Paragraph(html.escape(text), styles[style_name])
+    available_width = max(1, width)
+    used_width, used_height = paragraph.wrap(available_width, max_height)
+    draw_height = min(used_height, max_height)
+    paragraph.drawOn(pdf, x, y - draw_height)
+    return draw_height
+
+
+def _draw_badge(
+    pdf: canvas.Canvas,
+    text: str,
+    x: float,
+    y: float,
+    fill_color: str = "#e0f2fe",
+    text_color: str = "#075985",
+) -> float:
+    """Draw a compact rounded badge and return its width for inline badge layout."""
+    width = stringWidth(text, "Helvetica-Bold", 6.5) + 8
+    pdf.setFillColor(colors.HexColor(fill_color))
+    pdf.roundRect(x, y - 10, width, 11, 3, fill=1, stroke=0)
+    pdf.setFillColor(colors.HexColor(text_color))
+    pdf.setFont("Helvetica-Bold", 6.5)
+    pdf.drawString(x + 4, y - 7.5, text)
+    return width
+
+
+def _draw_meal_panel(
+    pdf: canvas.Canvas,
+    meal: Optional[Meal],
+    label: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+) -> None:
+    """Render one Home-style meal box inside a day card."""
+    description = meal.description.strip() if meal and meal.description else "Missing"
+    is_missing = description == "Missing"
+
+    pdf.setFillColor(colors.HexColor("#f8fafc"))
+    pdf.setStrokeColor(colors.HexColor("#cbd5e1"))
+    pdf.roundRect(x, y - height, width, height, 4, fill=1, stroke=1)
+
+    pdf.setFillColor(colors.HexColor("#374151"))
+    pdf.setFont("Helvetica-Bold", 8)
+    pdf.drawString(x + 7, y - 12, label)
+
+    badges = _meal_badges(meal)
+    badge_x = x + 54
+    badge_y = y - 3
+    for badge_text, fill_color, text_color in badges:
+        badge_width = _draw_badge(pdf, badge_text, badge_x, badge_y, fill_color, text_color)
+        badge_x += badge_width + 4
+        if badge_x > x + width - 45:
+            # Meal boxes are intentionally compact; dropping extra badges is better
+            # than letting them collide with the meal text in the share PDF.
+            break
+
+    if is_missing:
+        pdf.setFillColor(colors.HexColor("#b45309"))
+        pdf.setFont("Helvetica-Oblique", 8)
+        pdf.drawString(x + 7, y - 29, "Missing")
+        return
+
+    _draw_wrapped_text(
+        pdf,
+        description,
+        x + 7,
+        y - 23,
+        width - 14,
+        "BodyText",
+        height - 30,
+    )
+
+
+def _generate_current_window_pdf(meal_days: list[MealDay]) -> bytes:
+    """Generate the wide, single-row PDF that the Share page previews and emails."""
+    page_width = (
+        SHARE_PDF_MARGIN * 2
+        + SHARE_PDF_DAY_WIDTH * DAYS
+        + SHARE_PDF_DAY_GAP * (DAYS - 1)
+    )
+    buffer = io.BytesIO()
+    # Keep the content stream uncompressed so lightweight tests can assert visible
+    # dates/text and page dimensions without adding another PDF parser dependency.
+    pdf = canvas.Canvas(buffer, pagesize=(page_width, SHARE_PDF_HEIGHT), pageCompression=0)
+
+    context = _share_window_context(meal_days)
+    pdf.setTitle(context["title"])
+    pdf.setFillColor(colors.HexColor("#0f172a"))
+    pdf.setFont("Helvetica-Bold", 20)
+    pdf.drawString(
+        SHARE_PDF_MARGIN,
+        SHARE_PDF_HEIGHT - 0.42 * inch,
+        context["title"],
+    )
+    pdf.setFont("Helvetica", 8)
+    pdf.setFillColor(colors.HexColor("#475569"))
+    pdf.drawString(
+        SHARE_PDF_MARGIN,
+        SHARE_PDF_HEIGHT - 0.62 * inch,
+        f"Generated {context['generated_at']}",
+    )
+
+    top = SHARE_PDF_HEIGHT - 0.92 * inch
+    card_height = SHARE_PDF_HEIGHT - 1.24 * inch
+    meal_labels = [("breakfast", "Breakfast"), ("lunch", "Lunch"), ("dinner", "Dinner")]
+
+    for index, meal_day in enumerate(meal_days):
+        x = SHARE_PDF_MARGIN + index * (SHARE_PDF_DAY_WIDTH + SHARE_PDF_DAY_GAP)
+        y = top
+        pdf.setFillColor(colors.white)
+        pdf.setStrokeColor(colors.HexColor("#e2e8f0"))
+        pdf.roundRect(x, y - card_height, SHARE_PDF_DAY_WIDTH, card_height, 6, fill=1, stroke=1)
+
+        pdf.setFillColor(colors.HexColor("#0f172a"))
+        pdf.setFont("Helvetica-Bold", 11)
+        pdf.drawString(x + 10, y - 18, meal_day.date.strftime("%A"))
+        pdf.setFont("Helvetica-Bold", 9)
+        pdf.setFillColor(colors.HexColor("#64748b"))
+        pdf.drawString(x + 10, y - 32, _format_display_date(meal_day.date))
+
+        day_badges = []
+        if meal_day.is_starred:
+            day_badges.append("Sammy home")
+        if meal_day.is_sammy_working:
+            day_badges.append("Sammy working")
+
+        badge_x = x + 10
+        badge_y = y - 39
+        for badge in day_badges:
+            # Unlike the Home UI icon buttons, the PDF only shows active day
+            # states so the recipient is not asked to decode inactive controls.
+            badge_x += _draw_badge(pdf, badge, badge_x, badge_y, "#f5f3ff", "#6d28d9") + 4
+
+        meals_by_type = _meal_by_type(meal_day)
+        meal_y = y - 58
+        meal_panel_height = 86
+        for meal_key, meal_label in meal_labels:
+            meal = meals_by_type.get(meal_key)
+            _draw_meal_panel(
+                pdf,
+                meal,
+                meal_label,
+                x + 10,
+                meal_y,
+                SHARE_PDF_DAY_WIDTH - 20,
+                meal_panel_height,
+            )
+            meal_y -= meal_panel_height + 12
+
+    pdf.showPage()
+    pdf.save()
+    return buffer.getvalue()
+
+
+def _mailgun_config() -> dict[str, str]:
+    """Load Mailgun settings without exposing secrets in returned errors or logs."""
+    values = {
+        "api_key": os.getenv("MAILGUN_API_KEY", "").strip(),
+        "domain": os.getenv("MAILGUN_DOMAIN", "").strip(),
+        "from_email": os.getenv("MAILGUN_FROM_EMAIL", "").strip(),
+        "to_email": os.getenv("MAILGUN_TO_EMAIL", "").strip(),
+        "api_base_url": os.getenv("MAILGUN_API_BASE_URL", "https://api.mailgun.net").strip(),
+    }
+    missing = [
+        key
+        for key, value in values.items()
+        if key not in {"api_base_url", "to_email"} and not value
+    ]
+    if missing:
+        # Keep the error actionable without echoing configured secrets or addresses.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Mailgun is not configured. Missing: {', '.join(missing)}.",
+        )
+    return values
+
+
+def _validate_single_email_address(value: Any) -> str:
+    """Accept exactly one plain email address for the partner share flow."""
+    if not isinstance(value, str):
+        raise HTTPException(status_code=422, detail="recipient must be an email address.")
+
+    recipient = value.strip()
+    if not recipient:
+        raise HTTPException(status_code=422, detail="recipient is required.")
+    if "," in recipient or ";" in recipient or "\n" in recipient or "\r" in recipient:
+        raise HTTPException(status_code=422, detail="Only one recipient email is allowed.")
+
+    parsed_name, parsed_email = parseaddr(recipient)
+    if parsed_name or parsed_email != recipient or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", recipient):
+        raise HTTPException(status_code=422, detail="recipient must be a single valid email address.")
+    return recipient
+
+
+def _check_mailgun_send_rate_limit(now: Optional[float] = None) -> None:
+    """Allow a small burst of manual sends while preventing accidental repeat spam."""
+    now = monotonic() if now is None else now
+    window_start = now - MAILGUN_SEND_RATE_LIMIT_SECONDS
+    _mailgun_send_timestamps[:] = [
+        timestamp for timestamp in _mailgun_send_timestamps if timestamp > window_start
+    ]
+    if len(_mailgun_send_timestamps) >= MAILGUN_SEND_RATE_LIMIT_COUNT:
+        raise HTTPException(
+            status_code=429,
+            detail="Share email rate limit reached. Try again in a few minutes.",
+        )
+    _mailgun_send_timestamps.append(now)
+
+
+def _send_mailgun_share_email(
+    meal_days: list[MealDay],
+    note: str,
+    recipient: str,
+) -> dict[str, Any]:
+    """Send the regenerated PDF through Mailgun using the reviewed recipient/note."""
+    config = _mailgun_config()
+    date_range = _share_date_range(meal_days)
+    subject = date_range["title"]
+    body_parts = []
+    if note:
+        body_parts.append(note)
+        body_parts.append("")
+    body_parts.extend(
+        [
+            f"Meal plan for {date_range['start_display']} to {date_range['end_display']}.",
+            f"Generated {_format_generated_at(_now_utc())}.",
+            "PDF attached.",
+        ]
+    )
+
+    pdf_bytes = _generate_current_window_pdf(meal_days)
+    try:
+        response = requests.post(
+            f"{config['api_base_url'].rstrip('/')}/v3/{config['domain']}/messages",
+            auth=("api", config["api_key"]),
+            data={
+                "from": config["from_email"],
+                "to": recipient,
+                "subject": subject,
+                "text": "\n".join(body_parts),
+            },
+            files={
+                "attachment": (
+                    date_range["filename"],
+                    pdf_bytes,
+                    "application/pdf",
+                )
+            },
+            timeout=MAILGUN_SEND_TIMEOUT_SECONDS,
+    )
+    except requests.RequestException:
+        # Provider/network details can include sensitive request context, so logs and
+        # client errors stay intentionally high-level.
+        logger.warning("Mailgun share email request failed")
+        raise HTTPException(
+            status_code=502,
+            detail="Mailgun could not be reached. Check network and Mailgun configuration.",
+        )
+
+    if response.status_code >= 400:
+        logger.warning("Mailgun share email failed with status %s", response.status_code)
+        raise HTTPException(
+            status_code=502,
+            detail="Mailgun rejected the share email. Check configuration and Mailgun logs.",
+        )
+
+    logger.info("Meal plan share email accepted by Mailgun")
+    return {"status": "sent", "subject": subject, "filename": date_range["filename"]}
 
 
 def _serialize_meal(meal: Meal) -> dict[str, Any]:
@@ -351,32 +780,7 @@ def read_index(request: Request, db: Session = Depends(get_db)):
     """
     Homepage HTML — displays next N days of meals.
     """
-    today = date.today()
-    days = []
-
-    # Ensure we have MealDay and Meal entries for the next N days
-    for i in range(DAYS):
-        current_date = today + timedelta(days=i)
-        meal_day = (
-            db.query(MealDay)
-            .options(joinedload(MealDay.meals))
-            .filter(MealDay.date == current_date)
-            .first()
-        )
-
-        # If not found, create meal day with meal rows with null descriptions
-        if not meal_day:
-            meal_day = MealDay(date=current_date)
-            meal_day.meals = [
-                Meal(type=MealType.breakfast),
-                Meal(type=MealType.lunch),
-                Meal(type=MealType.dinner),
-            ]
-            db.add(meal_day)
-            db.commit()
-            db.refresh(meal_day)
-
-        days.append(meal_day)
+    days = _fetch_or_create_current_window(db)
 
     # Define template configuration: show_days_until_payday, show_meal_metrics
     template_config = {
@@ -399,7 +803,7 @@ def backwards_index(request: Request, db: Session = Depends(get_db)):
     """
     Homepage HTML — displays last N days of meals.
     """
-    today = date.today()
+    today = _today_in_app_timezone()
     days = []
 
     for i in range(1, DAYS_BACKWARDS + 1):
@@ -547,7 +951,7 @@ def get_favorites(limit: int = 200, db: Session = Depends(get_db)):
 
 @app.get("/api/veggies", response_class=JSONResponse)
 def get_veggies_eaten(db: Session = Depends(get_db)):
-    today = datetime.today().date()
+    today = _today_in_app_timezone()
 
     veggies = None
     with open("./static/veggies.json", "r") as f:
@@ -597,7 +1001,7 @@ def get_veggies_eaten(db: Session = Depends(get_db)):
 
 @app.get("/api/next-payday", response_class=JSONResponse)
 def get_next_payday():
-    today = datetime.today().date()
+    today = _today_in_app_timezone()
 
     # Anchor payday: Thursday, Sep 18, 2025
     anchor = datetime(2025, 9, 18).date()
@@ -735,6 +1139,30 @@ def get_export_page(request: Request, db: Session = Depends(get_db)):
     )
 
 
+@app.get("/share/current-window", response_class=HTMLResponse)
+def get_current_window_share_page(request: Request, db: Session = Depends(get_db)):
+    meal_days = _fetch_or_create_current_window(db)
+    share_context = _share_window_context(meal_days)
+
+    template_config = {
+        "title": "Share",
+        "show_days_until_payday": False,
+        "show_meal_metrics": False,
+        "days_are_stale": False,
+        "show_quick_tray": False,
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "share_current_window.html",
+        {
+            "request": request,
+            "template_config": template_config,
+            "share": share_context,
+        },
+    )
+
+
 @app.post("/api/import/dinner-plan", response_class=JSONResponse)
 def import_dinner_plan(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     dry_run = is_truthy(payload.get("dry_run", True))
@@ -758,9 +1186,7 @@ def import_dinner_plan(payload: Dict[str, Any] = Body(...), db: Session = Depend
 def export_meals_json(db: Session = Depends(get_db)):
     meal_days = _fetch_meal_days_for_export(db)
     payload = {
-        "generated_at": datetime.now(UTC)
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z"),
+        "generated_at": _format_storage_timestamp(_now_utc()),
         "meal_day_count": len(meal_days),
         "meal_count": sum(len(meal_day.meals) for meal_day in meal_days),
         "meal_days": [_serialize_meal_day(meal_day) for meal_day in meal_days],
@@ -824,10 +1250,54 @@ def export_meals_csv(db: Session = Depends(get_db)):
     )
 
 
+@app.get("/api/share/current-window.pdf")
+def share_current_window_pdf(db: Session = Depends(get_db)):
+    meal_days = _fetch_or_create_current_window(db)
+    date_range = _share_date_range(meal_days)
+    pdf_bytes = _generate_current_window_pdf(meal_days)
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{date_range["filename"]}"'
+        },
+    )
+
+
+@app.post("/api/share/current-window/send", response_class=JSONResponse)
+def send_current_window_share_email(
+    payload: Optional[Dict[str, Any]] = Body(default=None),
+    db: Session = Depends(get_db),
+):
+    payload = payload or {}
+    note = payload.get("note", "")
+    if note is None:
+        note = ""
+    if not isinstance(note, str):
+        raise HTTPException(status_code=422, detail="note must be a string.")
+
+    recipient = payload.get("recipient") or os.getenv("MAILGUN_TO_EMAIL", "")
+    recipient = _validate_single_email_address(recipient)
+
+    if not _mailgun_send_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="A share email is already being sent. Try again in a moment.",
+        )
+
+    meal_days = _fetch_or_create_current_window(db)
+    try:
+        _check_mailgun_send_rate_limit()
+        return _send_mailgun_share_email(meal_days, note.strip(), recipient)
+    finally:
+        _mailgun_send_lock.release()
+
+
 @app.get("/api/how-many-times", response_class=JSONResponse)
 def get_how_many_times_eat_out(db: Session = Depends(get_db)):
     # Get count of meals where is_takeout is True in the last 7 days
-    seven_days_ago = date.today() - timedelta(days=7)
+    seven_days_ago = _today_in_app_timezone() - timedelta(days=7)
     count = (
         db.query(Meal)
         .join(MealDay, Meal.meal_day_id == MealDay.id)
@@ -841,7 +1311,7 @@ def get_how_many_times_eat_out(db: Session = Depends(get_db)):
 @app.get("/api/rotation-suggestions")
 def rotation_suggestions(meal_type: Optional[str] = None, db: Session = Depends(get_db)):
     # Get recent meals from the last 3 days
-    recent_cutoff = date.today() - timedelta(days=3)
+    recent_cutoff = _today_in_app_timezone() - timedelta(days=3)
     recent_query = (
         db.query(Meal.description).join(MealDay).filter(MealDay.date >= recent_cutoff)
     )

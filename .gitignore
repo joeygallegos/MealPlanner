@@ -12,3 +12,4 @@ exports/
 exports/*.json
 *.log
 logs/*.log
+tmp/

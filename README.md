@@ -15,6 +15,13 @@ DB_NAME=
 
 SERVICE_HOST=127.0.0.1
 SERVICE_PORT=9001
+APP_TIMEZONE=America/Chicago
+
+MAILGUN_API_KEY=
+MAILGUN_DOMAIN=
+MAILGUN_FROM_EMAIL=
+MAILGUN_TO_EMAIL=
+MAILGUN_API_BASE_URL=https://api.mailgun.net
 ```
 
 Install the pinned dependencies:
@@ -30,6 +37,8 @@ python main.py
 ```
 
 The app uses `SERVICE_HOST` and `SERVICE_PORT` when started through `python main.py`.
+
+`APP_TIMEZONE` controls local app dates and display timestamps. Use `America/Chicago` for Chicago time. Stored/generated timestamp payloads remain UTC, using a trailing `Z` ISO format.
 
 ## Tests
 
@@ -95,6 +104,25 @@ python scripts/dump_meals_json.py
 ```
 
 That writes a timestamped full meal data dump to `exports/`.
+
+## Sharing the Current Meal Window
+
+Use the Share page to preview and email the current 9-day meal window:
+
+- `/share/current-window`
+- `/api/share/current-window.pdf`
+
+The PDF uses a wide custom landscape size so all 9 day cards fit in one horizontal row for browser viewing and zooming. It is not intended for standard paper printing. The PDF title uses the date shape `Meal plan: Wednesday 07/29 to Thursday 08/06`.
+
+Configure Mailgun before sending email:
+
+- `MAILGUN_API_KEY`: Mailgun sending API key.
+- `MAILGUN_DOMAIN`: Sending domain used in the Mailgun API URL.
+- `MAILGUN_FROM_EMAIL`: Sender address or friendly sender string.
+- `MAILGUN_TO_EMAIL`: Default partner recipient address. The Share page lets you change it for one send.
+- `MAILGUN_API_BASE_URL`: Defaults to `https://api.mailgun.net`; use `https://api.eu.mailgun.net` for EU domains.
+
+The Share form and send API require one valid recipient email address. The backend rejects multiple recipients and limits share sends to 5 accepted attempts per 5 minutes per running app process.
 
 ## UI Behavior Notes
 
