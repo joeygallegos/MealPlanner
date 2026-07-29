@@ -6,12 +6,13 @@ import re
 import json
 import csv
 import io
+import logging
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, Dict, Any, List, Optional
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, Request, Depends, HTTPException, Body, Query
-from fastapi.datastructures import FormData
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -22,6 +23,22 @@ import uvicorn
 
 # Initialize FastAPI app
 app = FastAPI()
+
+LOG_DIR = Path("logs")
+LOG_DIR.mkdir(exist_ok=True)
+LOG_PATH = LOG_DIR / "mealplanner.log"
+logger = logging.getLogger("mealplanner")
+logger.setLevel(logging.INFO)
+if not any(
+    isinstance(handler, logging.FileHandler)
+    and Path(handler.baseFilename) == LOG_PATH.resolve()
+    for handler in logger.handlers
+):
+    file_handler = logging.FileHandler(LOG_PATH, encoding="utf-8")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    )
+    logger.addHandler(file_handler)
 
 # Set up database connection and tables
 init_db()
@@ -330,11 +347,10 @@ def _apply_dinner_import_days(db: Session, days: list[dict[str, Any]]) -> dict[s
 
 # --------- HTML VIEWS --------------------------
 @app.get("/", response_class=HTMLResponse)
-def read_index(request: Request):
+def read_index(request: Request, db: Session = Depends(get_db)):
     """
     Homepage HTML — displays next N days of meals.
     """
-    db = next(get_db())
     today = date.today()
     days = []
 
@@ -372,17 +388,17 @@ def read_index(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {"request": request, "days": days, "template_config": template_config},
     )
 
 
 @app.get("/backwards", response_class=HTMLResponse)
-def backwards_index(request: Request):
+def backwards_index(request: Request, db: Session = Depends(get_db)):
     """
     Homepage HTML — displays last N days of meals.
     """
-    db = next(get_db())
     today = date.today()
     days = []
 
@@ -409,13 +425,14 @@ def backwards_index(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {"request": request, "days": days, "template_config": template_config},
     )
 
 
 # --------- API VIEWS --------------------------
-def _update_days_from_payload(days: list[dict], db):
+def _update_days_from_payload(days: list[dict], db: Session):
     for day in days:
         meal_day = db.query(MealDay).filter(MealDay.id == day["id"]).first()
         if not meal_day:
@@ -438,48 +455,47 @@ def _update_days_from_payload(days: list[dict], db):
             else:
                 meal.description = None
 
-            # Get nested fields from "meals" block in payload
             meal_fields = day.get("meals", {}).get(meal_type, {})
 
-            # Update is_takeout if present
-            if meal.is_takeout is not None or "is_takeout" in meal_fields:
-                # Print the current value and new updated value
-                print(
-                    f"Current {meal_type} for day {meal_day.date}: is_takeout={meal.is_takeout} -> New: {meal_fields.get('is_takeout', 'off')}"
+            if "is_takeout" in meal_fields:
+                logger.info(
+                    "Updating %s for %s: is_takeout=%s -> %s",
+                    meal_type,
+                    meal_day.date,
+                    meal.is_takeout,
+                    meal_fields.get("is_takeout"),
                 )
-                # Make change
-                meal.is_takeout = is_truthy(meal_fields.get("is_takeout", "off"))
+                meal.is_takeout = is_truthy(meal_fields.get("is_takeout"))
 
-            if meal.is_leftover is not None or "is_leftover" in meal_fields:
-                print(
-                    f"Current {meal_type} for day {meal_day.date}: is_leftover={meal.is_leftover} -> New: {meal_fields.get('is_leftover', 'off')}"
+            if "is_leftover" in meal_fields:
+                logger.info(
+                    "Updating %s for %s: is_leftover=%s -> %s",
+                    meal_type,
+                    meal_day.date,
+                    meal.is_leftover,
+                    meal_fields.get("is_leftover"),
                 )
-                meal.is_leftover = is_truthy(meal_fields.get("is_leftover", "off"))
+                meal.is_leftover = is_truthy(meal_fields.get("is_leftover"))
 
-            # Update cooking_user and is_favorite correctly if present
-            if meal.cooking_user is not None or "cooking_user" in meal_fields:
-                # Print the current value and new updated value
-                print(
-                    f"Current {meal_type} for day {meal_day.date}: cooking_user={meal.cooking_user} -> New: {meal_fields.get('cooking_user', 'None')}"
+            if "cooking_user" in meal_fields:
+                logger.info(
+                    "Updating %s for %s: cooking_user=%s -> %s",
+                    meal_type,
+                    meal_day.date,
+                    meal.cooking_user,
+                    meal_fields.get("cooking_user"),
                 )
-                # Make change
                 meal.cooking_user = meal_fields.get("cooking_user", None)
-            else:
-                print(
-                    f"SKIPPING cooking_user update for {meal_type} on day {meal_day.date} as it's not in payload"
-                )
 
-            if meal.is_favorite is not None or "is_favorite" in meal_fields:
-                # Print the current value and new updated value
-                print(
-                    f"Current {meal_type} for day {meal_day.date}: is_favorite={meal.is_favorite} -> New: {meal_fields.get('is_favorite', 'off')}"
+            if "is_favorite" in meal_fields:
+                logger.info(
+                    "Updating %s for %s: is_favorite=%s -> %s",
+                    meal_type,
+                    meal_day.date,
+                    meal.is_favorite,
+                    meal_fields.get("is_favorite"),
                 )
-                # Make change
-                meal.is_favorite = is_truthy(meal_fields.get("is_favorite", "off"))
-            else:
-                print(
-                    f"SKIPPING is_favorite update for {meal_type} on day {meal_day.date} as it's not in payload"
-                )
+                meal.is_favorite = is_truthy(meal_fields.get("is_favorite"))
 
 
 def is_truthy(value: Any) -> bool:
@@ -491,14 +507,12 @@ def is_truthy(value: Any) -> bool:
 
 
 @app.post("/api/save", response_class=JSONResponse)
-def api_save(payload: Dict[str, Any] = Body(...)):
+def api_save(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     """
     Accepts:
       {"day": {...}}  or  {"days": [{...}, ...]}
     Updates the database and returns a JSON response.
     """
-    db = next(get_db())
-
     if "day" in payload:
         days_payload = [payload["day"]]
     elif "days" in payload:
@@ -516,34 +530,29 @@ def api_save(payload: Dict[str, Any] = Body(...)):
 
 
 @app.get("/api/favorites")
-def get_favorites(limit: int = 200):
-    db = SessionLocal()
+def get_favorites(limit: int = 200, db: Session = Depends(get_db)):
     safe_limit = max(1, min(limit, 500))
-    try:
-        favorites = (
-            db.query(Meal.description)
-            .filter(Meal.is_favorite == True)
-            .filter(Meal.description.isnot(None))
-            .filter(Meal.description != "")
-            .distinct()
-            .order_by(Meal.description.asc())
-            .limit(safe_limit)
-            .all()
-        )
-        return [{"meal_text": m[0]} for m in favorites if m[0]]
-    finally:
-        db.close()
+    favorites = (
+        db.query(Meal.description)
+        .filter(Meal.is_favorite == True)
+        .filter(Meal.description.isnot(None))
+        .filter(Meal.description != "")
+        .distinct()
+        .order_by(Meal.description.asc())
+        .limit(safe_limit)
+        .all()
+    )
+    return [{"meal_text": m[0]} for m in favorites if m[0]]
 
 
 @app.get("/api/veggies", response_class=JSONResponse)
-def get_veggies_eaten():
+def get_veggies_eaten(db: Session = Depends(get_db)):
     today = datetime.today().date()
 
     veggies = None
     with open("./static/veggies.json", "r") as f:
         veggies = json.load(f)
 
-    db = SessionLocal()
     # This month
     first_of_month = today.replace(day=1)
     meals_this_month = (
@@ -575,7 +584,6 @@ def get_veggies_eaten():
         .filter(MealDay.date <= last_day_of_last_month)
         .all()
     )
-    db.close()
     meal_texts_last_month = [m[0].lower() for m in meals_last_month if m[0]]
     veggie_count_last_month = sum(
         1 for text in meal_texts_last_month if any(veggie in text for veggie in veggies)
@@ -623,47 +631,44 @@ def get_search_meal(
     include_takeout: Optional[bool] = False,
     include_leftovers: Optional[bool] = False,
     limit: int = 60,
+    db: Session = Depends(get_db),
 ):
     term = (query or "").strip()
     if not term:
         return {"results": []}
 
-    db = SessionLocal()
     safe_limit = max(1, min(limit, 200))
     use_favorites_filter = is_truthy(favorites_only) or is_truthy(only_favorites)
 
-    try:
-        normalized_description = func.lower(func.trim(Meal.description))
-        latest_match_ids = (
-            db.query(func.max(Meal.id).label("meal_id"))
-            .filter(Meal.description.isnot(None))
-            .filter(Meal.description != "")
-            .filter(Meal.description.ilike(f"%{term}%"))
-        )
-        if use_favorites_filter:
-            latest_match_ids = latest_match_ids.filter(Meal.is_favorite == True)
-        if not is_truthy(include_takeout):
-            latest_match_ids = latest_match_ids.filter(Meal.is_takeout == False)
-        if not is_truthy(include_leftovers):
-            latest_match_ids = latest_match_ids.filter(Meal.is_leftover == False)
+    normalized_description = func.lower(func.trim(Meal.description))
+    latest_match_ids = (
+        db.query(func.max(Meal.id).label("meal_id"))
+        .filter(Meal.description.isnot(None))
+        .filter(Meal.description != "")
+        .filter(Meal.description.ilike(f"%{term}%"))
+    )
+    if use_favorites_filter:
+        latest_match_ids = latest_match_ids.filter(Meal.is_favorite == True)
+    if not is_truthy(include_takeout):
+        latest_match_ids = latest_match_ids.filter(Meal.is_takeout == False)
+    if not is_truthy(include_leftovers):
+        latest_match_ids = latest_match_ids.filter(Meal.is_leftover == False)
 
-        latest_match_ids = (
-            latest_match_ids.group_by(normalized_description)
-            .order_by(func.max(Meal.id).desc())
-            .limit(safe_limit)
-            .subquery()
-        )
+    latest_match_ids = (
+        latest_match_ids.group_by(normalized_description)
+        .order_by(func.max(Meal.id).desc())
+        .limit(safe_limit)
+        .subquery()
+    )
 
-        rows = (
-            db.query(Meal.description)
-            .join(latest_match_ids, Meal.id == latest_match_ids.c.meal_id)
-            .order_by(latest_match_ids.c.meal_id.desc())
-            .all()
-        )
+    rows = (
+        db.query(Meal.description)
+        .join(latest_match_ids, Meal.id == latest_match_ids.c.meal_id)
+        .order_by(latest_match_ids.c.meal_id.desc())
+        .all()
+    )
 
-        return {"results": [text.strip() for (text,) in rows if text and text.strip()]}
-    finally:
-        db.close()
+    return {"results": [text.strip() for (text,) in rows if text and text.strip()]}
 
 
 @app.get("/search", response_class=HTMLResponse)
@@ -679,6 +684,7 @@ def get_search(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "search.html",
         {"request": request, "template_config": template_config},
     )
@@ -695,6 +701,7 @@ def get_import_page(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "import.html",
         {
             "request": request,
@@ -705,13 +712,9 @@ def get_import_page(request: Request):
 
 
 @app.get("/export", response_class=HTMLResponse)
-def get_export_page(request: Request):
-    db = SessionLocal()
-    try:
-        meal_days = _fetch_meal_days_for_export(db)
-        export_summary = _build_export_summary(meal_days)
-    finally:
-        db.close()
+def get_export_page(request: Request, db: Session = Depends(get_db)):
+    meal_days = _fetch_meal_days_for_export(db)
+    export_summary = _build_export_summary(meal_days)
 
     template_config = {
         "title": "Export",
@@ -722,6 +725,7 @@ def get_export_page(request: Request):
     }
 
     return templates.TemplateResponse(
+        request,
         "export.html",
         {
             "request": request,
@@ -732,7 +736,7 @@ def get_export_page(request: Request):
 
 
 @app.post("/api/import/dinner-plan", response_class=JSONResponse)
-def import_dinner_plan(payload: Dict[str, Any] = Body(...)):
+def import_dinner_plan(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db)):
     dry_run = is_truthy(payload.get("dry_run", True))
     plan = payload.get("plan")
     if plan is None:
@@ -740,35 +744,27 @@ def import_dinner_plan(payload: Dict[str, Any] = Body(...)):
 
     days = _validate_dinner_import_plan(plan)
 
-    db = SessionLocal()
-    try:
-        result = _preview_dinner_import_days(db, days)
-        if not dry_run:
-            result = _apply_dinner_import_days(db, days)
-        return {
-            "status": "preview" if dry_run else "imported",
-            "dry_run": dry_run,
-            **result,
-        }
-    finally:
-        db.close()
+    result = _preview_dinner_import_days(db, days)
+    if not dry_run:
+        result = _apply_dinner_import_days(db, days)
+    return {
+        "status": "preview" if dry_run else "imported",
+        "dry_run": dry_run,
+        **result,
+    }
 
 
 @app.get("/api/export/meals.json")
-def export_meals_json():
-    db = SessionLocal()
-    try:
-        meal_days = _fetch_meal_days_for_export(db)
-        payload = {
-            "generated_at": datetime.now(UTC)
-            .isoformat(timespec="seconds")
-            .replace("+00:00", "Z"),
-            "meal_day_count": len(meal_days),
-            "meal_count": sum(len(meal_day.meals) for meal_day in meal_days),
-            "meal_days": [_serialize_meal_day(meal_day) for meal_day in meal_days],
-        }
-    finally:
-        db.close()
+def export_meals_json(db: Session = Depends(get_db)):
+    meal_days = _fetch_meal_days_for_export(db)
+    payload = {
+        "generated_at": datetime.now(UTC)
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z"),
+        "meal_day_count": len(meal_days),
+        "meal_count": sum(len(meal_day.meals) for meal_day in meal_days),
+        "meal_days": [_serialize_meal_day(meal_day) for meal_day in meal_days],
+    }
 
     return Response(
         content=json.dumps(payload, indent=2),
@@ -780,12 +776,8 @@ def export_meals_json():
 
 
 @app.get("/api/export/meals.csv")
-def export_meals_csv():
-    db = SessionLocal()
-    try:
-        meal_days = _fetch_meal_days_for_export(db)
-    finally:
-        db.close()
+def export_meals_csv(db: Session = Depends(get_db)):
+    meal_days = _fetch_meal_days_for_export(db)
 
     output = io.StringIO()
     writer = csv.writer(output, lineterminator="\n")
@@ -833,8 +825,7 @@ def export_meals_csv():
 
 
 @app.get("/api/how-many-times", response_class=JSONResponse)
-def get_how_many_times_eat_out():
-    db = SessionLocal()
+def get_how_many_times_eat_out(db: Session = Depends(get_db)):
     # Get count of meals where is_takeout is True in the last 7 days
     seven_days_ago = date.today() - timedelta(days=7)
     count = (
@@ -844,14 +835,11 @@ def get_how_many_times_eat_out():
         .filter(MealDay.date >= seven_days_ago)
         .count()
     )
-    db.close()
     return {"count": count}
 
 
 @app.get("/api/rotation-suggestions")
-def rotation_suggestions(meal_type: Optional[str] = None):
-    db = SessionLocal()
-
+def rotation_suggestions(meal_type: Optional[str] = None, db: Session = Depends(get_db)):
     # Get recent meals from the last 3 days
     recent_cutoff = date.today() - timedelta(days=3)
     recent_query = (
@@ -872,8 +860,6 @@ def rotation_suggestions(meal_type: Optional[str] = None):
         for f in favorite_meals
         if f[0] and f[0].strip().lower() not in recent_set
     }
-
-    db.close()
 
     if not favorite_set:
         return {"suggestion": None}

@@ -2,34 +2,8 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    {% include "partials/head_assets.html" %}
     <title>Meal Planner Import</title>
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <style>
-        [x-cloak] {
-            display: none !important
-        }
-
-        .mp-btn {
-            border-radius: 0.75rem;
-            font-weight: 700;
-            text-decoration: none;
-            transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-            box-shadow: 0 10px 20px rgba(15, 23, 42, 0.08);
-        }
-
-        .mp-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.12);
-        }
-
-        .mp-btn:focus-visible {
-            outline: none;
-            box-shadow: 0 0 0 3px rgba(125, 211, 252, 0.45), 0 14px 24px rgba(15, 23, 42, 0.12);
-        }
-    </style>
 </head>
 
 <body class="bg-slate-50 text-slate-900">

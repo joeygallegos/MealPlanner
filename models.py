@@ -10,14 +10,12 @@ from sqlalchemy import (
     Text,
     ForeignKey,
 )
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import enum
 import os
 from urllib.parse import quote_plus
 
 from dotenv import load_dotenv
-from urllib.parse import quote_plus
 
 # Load environment variables from .env file
 load_dotenv()
@@ -46,7 +44,7 @@ class Meal(Base):
     meal_day_id = Column(Integer, ForeignKey("meal_days.id"), nullable=False)
     type = Column(Enum(MealType), nullable=False)
     description = Column(Text)
-    cooking_user = Column(String(10), nullable=True)  # NEW: 'Joey' or 'Sam'
+    cooking_user = Column(String(10), nullable=True)
     is_favorite = Column(Boolean, default=False, nullable=False)
     is_takeout = Column(Boolean, default=False, nullable=False)
     is_leftover = Column(Boolean, default=False, nullable=False)
