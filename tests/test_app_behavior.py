@@ -127,10 +127,92 @@ def test_api_save_preserves_omitted_nested_fields_and_normalizes_text(app_contex
 def test_html_routes_render(seeded_db):
     main, models, SessionLocal, client = seeded_db
 
-    for path in ["/", "/backwards", "/search", "/import", "/export", "/share/current-window"]:
+    for path in ["/", "/backwards", "/search", "/import", "/inventory", "/export", "/share/current-window"]:
         response = client.get(path)
         assert response.status_code == 200
         assert "Meal Planner" in response.text
+
+
+def test_inventory_route_renders_checklist_and_nav(seeded_db):
+    main, models, SessionLocal, client = seeded_db
+
+    response = client.get("/inventory")
+
+    assert response.status_code == 200
+    assert "Meal Planner - Inventory" in response.text
+    assert "Copy for ChatGPT" in response.text
+    assert 'href="/inventory"' in response.text
+
+
+def test_inventory_api_normalizes_deduplicates_and_replaces(app_context):
+    main, models, SessionLocal, client = app_context
+
+    saved = client.put(
+        "/api/inventory/current",
+        json={
+            "items": [
+                {"name": "  mashed potatoes  "},
+                {"name": ""},
+                {"name": "Quinoa"},
+                {"name": "quinoa"},
+                {"name": "broth/stock"},
+            ]
+        },
+    )
+
+    assert saved.status_code == 200
+    body = saved.json()
+    assert body["item_count"] == 3
+    assert [item["name"] for item in body["items"]] == [
+        "mashed potatoes",
+        "Quinoa",
+        "broth/stock",
+    ]
+    assert [item["position"] for item in body["items"]] == [0, 1, 2]
+    assert body["updated_at"].endswith("Z")
+    assert body["chatgpt_text"] == (
+        "Current inventory snapshot:\n"
+        "- mashed potatoes\n"
+        "- Quinoa\n"
+        "- broth/stock"
+    )
+
+    fetched = client.get("/api/inventory/current")
+    assert fetched.status_code == 200
+    assert [item["name"] for item in fetched.json()["items"]] == [
+        "mashed potatoes",
+        "Quinoa",
+        "broth/stock",
+    ]
+
+    replaced = client.put(
+        "/api/inventory/current",
+        json={"items": [{"name": "eggs"}]},
+    )
+
+    assert replaced.status_code == 200
+    assert [item["name"] for item in replaced.json()["items"]] == ["eggs"]
+    assert [item["name"] for item in client.get("/api/inventory/current").json()["items"]] == ["eggs"]
+
+
+def test_import_prompt_includes_inventory_only_when_items_exist(app_context):
+    main, models, SessionLocal, client = app_context
+
+    empty_response = client.get("/import")
+    assert empty_response.status_code == 200
+    assert "Current inventory snapshot:" not in empty_response.text
+
+    client.put(
+        "/api/inventory/current",
+        json={"items": [{"name": "mashed potatoes"}, {"name": "broth/stock"}]},
+    )
+
+    inventory_response = client.get("/import")
+
+    assert inventory_response.status_code == 200
+    assert "Current inventory snapshot:" in inventory_response.text
+    assert "- mashed potatoes" in inventory_response.text
+    assert "- broth/stock" in inventory_response.text
 
 
 def test_import_dinner_plan_preview_and_apply(app_context):

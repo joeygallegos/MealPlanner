@@ -144,6 +144,14 @@
     <script>
         function dinnerImportApp()
         {
+            const inventoryPromptBlock = {{ inventory_prompt_block | tojson }};
+            // Inventory is server-saved from the iPad workflow, so seed the
+            // desk-side planning prompt without requiring a manual handoff.
+            const preferencesBlock = inventoryPromptBlock
+                ? `${inventoryPromptBlock}
+
+[Paste dates, budget, dietary limits, leftovers, or restaurants here.]`
+                : `[Paste dinner preferences, dates, budget, dietary limits, leftovers, ingredients to use, or restaurants here.]`;
             const promptText = `Generate a dinner plan as JSON only. Do not include markdown, comments, or explanation.
 
 Conform exactly to this schema:
@@ -174,7 +182,7 @@ Use this JSON shape:
 }
 
 My preferences:
-[Paste dinner preferences, dates, budget, dietary limits, leftovers, ingredients to use, or restaurants here.]`;
+${preferencesBlock}`;
 
             return {
                 promptText,

@@ -24,7 +24,31 @@ MAILGUN_TO_EMAIL=
 MAILGUN_API_BASE_URL=https://api.mailgun.net
 ```
 
-Install the pinned dependencies:
+Create a local virtual environment:
+
+```powershell
+python -m venv .venv
+```
+
+Activate it on Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+If PowerShell blocks activation on your machine, allow scripts for the current user once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Activate it on Linux or macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Install the pinned dependencies inside the active virtual environment:
 
 ```powershell
 pip install -r requirements.txt
@@ -40,9 +64,15 @@ The app uses `SERVICE_HOST` and `SERVICE_PORT` when started through `python main
 
 `APP_TIMEZONE` controls local app dates and display timestamps. Use `America/Chicago` for Chicago time. Stored/generated timestamp payloads remain UTC, using a trailing `Z` ISO format.
 
+Deactivate the virtual environment when you are done:
+
+```powershell
+deactivate
+```
+
 ## Tests
 
-Run the test suite with:
+Run the test suite from the active virtual environment with:
 
 ```powershell
 python -m pytest
@@ -143,6 +173,31 @@ The UI stores quick-tray data in browser local storage:
 - `mealplanner.queue.v1`: meals queued from the home screen for later placement.
 
 Clearing browser site data removes these local-only lists.
+
+## Inventory Snapshot
+
+Use `/inventory` to maintain the current "what I have" inventory for meal planning. The inventory is saved server-side so an iPad pantry walk can be reused later from a desk browser.
+
+The inventory tracks item names only. It does not track quantity, location, expiration dates, categories, or history. Blank rows are ignored, duplicate names are skipped case-insensitively, and the current list is capped at 300 items.
+
+Inventory API routes:
+
+- `GET /api/inventory/current`
+- `PUT /api/inventory/current`
+
+The `PUT` route replaces the current snapshot with this shape:
+
+```json
+{
+  "items": [
+    { "name": "mashed potatoes" },
+    { "name": "quinoa" },
+    { "name": "broth/stock" }
+  ]
+}
+```
+
+The Inventory page can copy a ChatGPT-ready block. When inventory items exist, the Import page includes that block in the generated ChatGPT dinner-planning prompt.
 
 ## ChatGPT Dinner Import Workflow
 

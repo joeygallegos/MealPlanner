@@ -30,7 +30,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
-from models import MealDay, Meal, MealType, SessionLocal, init_db
+from models import InventoryItem, MealDay, Meal, MealType, SessionLocal, init_db
 import uvicorn
 
 # Initialize FastAPI app
@@ -66,6 +66,7 @@ MEAL_TYPE_SORT_ORDER = {"breakfast": 0, "lunch": 1, "dinner": 2}
 DINNER_IMPORT_SCHEMA_VERSION = "mealplanner.chatgpt_dinner_plan.v1"
 DINNER_IMPORT_MAX_DAYS = 14
 DINNER_IMPORT_COOKING_USERS = {"Joey", "Sam"}
+INVENTORY_MAX_ITEMS = 300
 APP_TIMEZONE_ENV = "APP_TIMEZONE"
 DEFAULT_APP_TIMEZONE = "America/Chicago"
 # The share PDF intentionally uses a browser-viewing canvas, not a paper size,
@@ -155,6 +156,80 @@ def _format_generated_at(value: datetime) -> str:
 def _format_storage_timestamp(value: datetime) -> str:
     """Keep machine-readable/export timestamps in UTC regardless of display timezone."""
     return value.astimezone(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _normalize_inventory_items(items: Any) -> list[dict[str, str]]:
+    """Trim the current inventory snapshot to the simple possession-only model."""
+    if not isinstance(items, list):
+        raise HTTPException(status_code=422, detail="items must be a list.")
+
+    normalized = []
+    seen_names = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=422, detail=f"items[{index}] must be an object.")
+
+        name = item.get("name", "")
+        if name is None:
+            name = ""
+        if not isinstance(name, str):
+            raise HTTPException(
+                status_code=422,
+                detail=f"items[{index}].name must be a string.",
+            )
+
+        trimmed_name = name.strip()
+        if not trimmed_name:
+            continue
+
+        name_key = trimmed_name.casefold()
+        if name_key in seen_names:
+            continue
+
+        normalized.append({"name": trimmed_name})
+        seen_names.add(name_key)
+        if len(normalized) >= INVENTORY_MAX_ITEMS:
+            break
+
+    return normalized
+
+
+def _fetch_inventory_items(db: Session) -> list[InventoryItem]:
+    return (
+        db.query(InventoryItem)
+        .order_by(InventoryItem.position.asc(), InventoryItem.id.asc())
+        .all()
+    )
+
+
+def _format_inventory_prompt_block(items: list[InventoryItem]) -> str:
+    names = [item.name.strip() for item in items if item.name and item.name.strip()]
+    if not names:
+        return ""
+
+    item_lines = "\n".join(f"- {name}" for name in names)
+    return f"Current inventory snapshot:\n{item_lines}"
+
+
+def _coerce_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _serialize_inventory_items(items: list[InventoryItem]) -> dict[str, Any]:
+    updated_values = [item.updated_at for item in items if item.updated_at]
+    updated_at = max((_coerce_utc(value) for value in updated_values), default=None)
+
+    return {
+        "items": [
+            {"id": item.id, "name": item.name, "position": item.position}
+            for item in items
+        ],
+        "item_count": len(items),
+        "updated_at": _format_storage_timestamp(updated_at) if updated_at else None,
+        "chatgpt_text": _format_inventory_prompt_block(items),
+    }
 
 
 def _app_timezone() -> ZoneInfo:
@@ -933,6 +1008,38 @@ def api_save(payload: Dict[str, Any] = Body(...), db: Session = Depends(get_db))
     return {"status": "ok"}
 
 
+@app.get("/api/inventory/current", response_class=JSONResponse)
+def get_current_inventory(db: Session = Depends(get_db)):
+    return _serialize_inventory_items(_fetch_inventory_items(db))
+
+
+@app.put("/api/inventory/current", response_class=JSONResponse)
+def put_current_inventory(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+):
+    if "items" not in payload:
+        raise HTTPException(status_code=422, detail="Missing 'items' field.")
+
+    normalized_items = _normalize_inventory_items(payload["items"])
+    updated_at = _now_utc()
+
+    # The inventory page models one current snapshot, so saving replaces the
+    # whole list instead of trying to infer item-level adds and removals.
+    db.query(InventoryItem).delete()
+    for position, item in enumerate(normalized_items):
+        db.add(
+            InventoryItem(
+                name=item["name"],
+                position=position,
+                updated_at=updated_at,
+            )
+        )
+
+    db.commit()
+    return _serialize_inventory_items(_fetch_inventory_items(db))
+
+
 @app.get("/api/favorites")
 def get_favorites(limit: int = 200, db: Session = Depends(get_db)):
     safe_limit = max(1, min(limit, 500))
@@ -1095,7 +1202,7 @@ def get_search(request: Request):
 
 
 @app.get("/import", response_class=HTMLResponse)
-def get_import_page(request: Request):
+def get_import_page(request: Request, db: Session = Depends(get_db)):
     template_config = {
         "title": "Import",
         "show_days_until_payday": False,
@@ -1103,6 +1210,7 @@ def get_import_page(request: Request):
         "days_are_stale": False,
         "show_quick_tray": False,
     }
+    inventory_prompt_block = _format_inventory_prompt_block(_fetch_inventory_items(db))
 
     return templates.TemplateResponse(
         request,
@@ -1111,7 +1219,25 @@ def get_import_page(request: Request):
             "request": request,
             "template_config": template_config,
             "schema_version": DINNER_IMPORT_SCHEMA_VERSION,
+            "inventory_prompt_block": inventory_prompt_block,
         },
+    )
+
+
+@app.get("/inventory", response_class=HTMLResponse)
+def get_inventory_page(request: Request):
+    template_config = {
+        "title": "Inventory",
+        "show_days_until_payday": False,
+        "show_meal_metrics": False,
+        "days_are_stale": False,
+        "show_quick_tray": False,
+    }
+
+    return templates.TemplateResponse(
+        request,
+        "inventory.html",
+        {"request": request, "template_config": template_config},
     )
 
 

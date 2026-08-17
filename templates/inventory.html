@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    {% include "partials/head_assets.html" %}
+    <title>Meal Planner Inventory</title>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <div class="w-full px-4 py-6 sm:px-8 sm:py-10" x-data="inventoryApp()" x-init="loadInventory()">
+        {% include "partials/header.html" %}
+
+        <main class="mx-auto max-w-4xl">
+            <div class="sticky top-0 z-20 -mx-4 border-y border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:mx-0 sm:rounded-lg sm:border">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="rounded-full bg-lime-100 px-3 py-1 text-sm font-bold text-lime-900">
+                            <span x-text="inventoryCount()">0</span> items
+                        </span>
+                        <span class="text-sm font-medium text-slate-600">
+                            Last saved: <span x-text="lastSavedLabel">Never</span>
+                        </span>
+                        <span x-cloak x-show="isSaving" class="text-sm font-semibold text-sky-700">Saving...</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button"
+                            class="mp-btn bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-sm text-white hover:from-sky-400 hover:to-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="!inventoryCount()" @click="copyForChatGPT()">Copy for ChatGPT</button>
+                        <button type="button"
+                            class="mp-btn border border-rose-200 bg-white px-4 py-2 text-sm text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            :disabled="!inventoryCount()" @click="clearList()">Clear List</button>
+                    </div>
+                </div>
+                <div x-cloak x-show="message" class="mt-3 rounded-lg border px-3 py-2 text-sm font-medium"
+                    :class="messageType === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'"
+                    x-text="message"></div>
+            </div>
+
+            <section class="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <form class="flex flex-col gap-3 sm:flex-row" @submit.prevent="addItem()">
+                    <label class="sr-only" for="inventory-item-input">Add item</label>
+                    <input id="inventory-item-input" x-ref="itemInput" type="text" x-model="newItem"
+                        class="min-h-14 grow rounded-lg border border-slate-300 bg-white px-4 text-lg text-slate-900 placeholder:text-slate-400 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                        placeholder="Add item" autocomplete="off" autocapitalize="none">
+                    <button type="submit"
+                        class="mp-btn min-h-14 bg-gradient-to-r from-lime-500 to-green-600 px-6 text-base text-white hover:from-lime-400 hover:to-green-500">Add</button>
+                </form>
+            </section>
+
+            <section class="mt-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <label for="inventory-bulk-input" class="text-sm font-bold uppercase tracking-wide text-slate-600">Bulk add</label>
+                <textarea id="inventory-bulk-input" rows="5" x-model="bulkText"
+                    class="mt-2 block w-full rounded-lg border border-slate-300 p-3 text-base leading-7 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                    placeholder="mashed potatoes&#10;quinoa&#10;broth/stock"></textarea>
+                <div class="mt-3 flex justify-end">
+                    <button type="button"
+                        class="mp-btn bg-gradient-to-r from-emerald-500 to-teal-600 px-5 py-3 text-sm text-white hover:from-emerald-400 hover:to-teal-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        :disabled="!bulkText.trim()" @click="addBulkLines()">Add Lines</button>
+                </div>
+            </section>
+
+            <section class="mt-6">
+                <div class="mb-3 flex items-center justify-between">
+                    <h2 class="text-lg font-bold tracking-tight">Current Inventory</h2>
+                    <span class="text-sm font-medium text-slate-500" x-text="isLoading ? 'Loading...' : ''"></span>
+                </div>
+
+                <div x-cloak x-show="!isLoading && !items.length"
+                    class="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                    No inventory items yet.
+                </div>
+
+                <div class="grid grid-cols-1 gap-3" x-show="items.length">
+                    <template x-for="(item, index) in items" :key="item.key">
+                        <div class="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+                            <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm font-bold text-slate-600"
+                                x-text="index + 1"></div>
+                            <label class="sr-only" :for="`inventory-row-${index}`">Inventory item</label>
+                            <input :id="`inventory-row-${index}`" type="text" x-model="item.name"
+                                class="min-h-11 grow rounded-lg border border-slate-300 px-3 text-base focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-200"
+                                @keydown.enter.prevent="$event.target.blur()" @blur="saveEdits()">
+                            <button type="button"
+                                class="mp-btn min-h-11 shrink-0 border border-slate-300 bg-white px-3 text-sm text-slate-700 hover:bg-slate-100"
+                                @click="removeItem(index)" aria-label="Remove inventory item">Remove</button>
+                        </div>
+                    </template>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        function inventoryApp()
+        {
+            return {
+                items: [],
+                newItem: '',
+                bulkText: '',
+                isLoading: true,
+                isSaving: false,
+                message: '',
+                messageType: 'ok',
+                messageTimer: null,
+                lastSavedLabel: 'Never',
+                async loadInventory()
+                {
+                    this.isLoading = true;
+                    try
+                    {
+                        const response = await fetch('/api/inventory/current');
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data?.message || 'Inventory load failed.');
+                        this.applyServerInventory(data);
+                    } catch (error)
+                    {
+                        this.showMessage(error.message || 'Inventory load failed.', 'error');
+                    } finally
+                    {
+                        this.isLoading = false;
+                        this.$nextTick(() => this.$refs.itemInput?.focus());
+                    }
+                },
+                applyServerInventory(data)
+                {
+                    const serverItems = Array.isArray(data?.items) ? data.items : [];
+                    this.items = serverItems.map((item, index) => ({
+                        id: item.id,
+                        key: item.id || `inventory-${index}-${item.name}`,
+                        name: String(item.name || '').trim()
+                    })).filter(item => item.name);
+                    this.lastSavedLabel = this.formatTimestamp(data?.updated_at);
+                },
+                normalizeName(value)
+                {
+                    return String(value || '').trim();
+                },
+                cleanItems(items)
+                {
+                    const cleaned = [];
+                    const seen = new Set();
+
+                    // Keep the browser-side view aligned with the API contract:
+                    // only current item names, no blanks, no case-only duplicates.
+                    for (const item of items)
+                    {
+                        const name = this.normalizeName(item?.name);
+                        if (!name) continue;
+
+                        const key = name.toLocaleLowerCase();
+                        if (seen.has(key)) continue;
+
+                        seen.add(key);
+                        cleaned.push({ name });
+                        if (cleaned.length >= 300) break;
+                    }
+
+                    return cleaned;
+                },
+                inventoryCount()
+                {
+                    return this.cleanItems(this.items).length;
+                },
+                async addItem()
+                {
+                    const added = await this.addNames([this.newItem]);
+                    if (added) this.newItem = '';
+                    this.$nextTick(() => this.$refs.itemInput?.focus());
+                },
+                async addBulkLines()
+                {
+                    const added = await this.addNames(this.bulkText.split(/\r?\n/));
+                    if (added) this.bulkText = '';
+                    this.$nextTick(() => this.$refs.itemInput?.focus());
+                },
+                async addNames(names)
+                {
+                    const existing = new Set(this.cleanItems(this.items).map(item => item.name.toLocaleLowerCase()));
+                    const nextItems = [];
+                    let skippedDuplicates = 0;
+
+                    for (const rawName of names)
+                    {
+                        const name = this.normalizeName(rawName);
+                        if (!name) continue;
+
+                        const key = name.toLocaleLowerCase();
+                        if (existing.has(key))
+                        {
+                            skippedDuplicates++;
+                            continue;
+                        }
+
+                        existing.add(key);
+                        nextItems.push({
+                            key: `pending-${Date.now()}-${Math.random()}`,
+                            name
+                        });
+                    }
+
+                    if (!nextItems.length)
+                    {
+                        this.showMessage(skippedDuplicates ? 'Item already exists.' : 'Enter an item first.', 'error');
+                        return 0;
+                    }
+
+                    this.items.push(...nextItems);
+                    const saved = await this.persistInventory();
+                    if (!saved) return 0;
+
+                    if (skippedDuplicates)
+                    {
+                        this.showMessage(`Added ${nextItems.length}; skipped ${skippedDuplicates} duplicate item(s).`);
+                    } else
+                    {
+                        this.showMessage(`Added ${nextItems.length} item(s).`);
+                    }
+                    return nextItems.length;
+                },
+                async saveEdits()
+                {
+                    const before = this.items.length;
+                    this.items = this.cleanItems(this.items).map((item, index) => ({
+                        key: `edited-${index}-${item.name}`,
+                        name: item.name
+                    }));
+                    const saved = await this.persistInventory();
+                    if (saved && this.items.length !== before)
+                    {
+                        this.showMessage('Inventory cleaned and saved.');
+                    }
+                },
+                async removeItem(index)
+                {
+                    this.items.splice(index, 1);
+                    if (await this.persistInventory())
+                    {
+                        this.showMessage('Item removed.');
+                    }
+                },
+                async clearList()
+                {
+                    if (!this.items.length) return;
+                    if (!window.confirm('Clear the current inventory list?')) return;
+
+                    this.items = [];
+                    if (await this.persistInventory())
+                    {
+                        this.showMessage('Inventory cleared.');
+                    }
+                },
+                async persistInventory()
+                {
+                    this.isSaving = true;
+                    try
+                    {
+                        const response = await fetch('/api/inventory/current', {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items: this.cleanItems(this.items) })
+                        });
+                        const data = await response.json();
+                        if (!response.ok) throw new Error(data?.message || 'Inventory save failed.');
+                        this.applyServerInventory(data);
+                        return true;
+                    } catch (error)
+                    {
+                        this.showMessage(error.message || 'Inventory save failed.', 'error');
+                        return false;
+                    } finally
+                    {
+                        this.isSaving = false;
+                    }
+                },
+                buildChatGptText()
+                {
+                    const names = this.cleanItems(this.items).map(item => item.name);
+                    if (!names.length) return '';
+                    return `Current inventory snapshot:\n${names.map(name => `- ${name}`).join('\n')}`;
+                },
+                async copyForChatGPT()
+                {
+                    const text = this.buildChatGptText();
+                    if (!text)
+                    {
+                        this.showMessage('No inventory items to copy.', 'error');
+                        return;
+                    }
+
+                    try
+                    {
+                        await navigator.clipboard.writeText(text);
+                        this.showMessage('Inventory copied for ChatGPT.');
+                    } catch
+                    {
+                        this.showMessage('Clipboard copy failed.', 'error');
+                    }
+                },
+                formatTimestamp(value)
+                {
+                    if (!value) return 'Never';
+
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) return 'Saved';
+
+                    return date.toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit'
+                    });
+                },
+                showMessage(message, type = 'ok')
+                {
+                    this.message = message;
+                    this.messageType = type;
+                    clearTimeout(this.messageTimer);
+                    this.messageTimer = setTimeout(() => this.message = '', 2500);
+                }
+            };
+        }
+    </script>
+</body>
+
+</html>

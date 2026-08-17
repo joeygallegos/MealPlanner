@@ -1,9 +1,12 @@
 # models.py
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     create_engine,
     Column,
     Integer,
     Date,
+    DateTime,
     Boolean,
     String,
     Enum,
@@ -49,6 +52,21 @@ class Meal(Base):
     is_takeout = Column(Boolean, default=False, nullable=False)
     is_leftover = Column(Boolean, default=False, nullable=False)
     day = relationship("MealDay", back_populates="meals")
+
+
+# Inventory is intentionally a single current snapshot, not a pantry ledger.
+# Rows are replaced as a set by the inventory API whenever the user saves.
+class InventoryItem(Base):
+    __tablename__ = "inventory_items"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(Text, nullable=False)
+    position = Column(Integer, nullable=False, default=0)
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
+    )
 
 
 # Database connection URL; you can configure it using environment variables.
